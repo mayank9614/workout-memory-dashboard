@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CalendarDays, Dumbbell, Plus, TrendingUp, Activity, Sparkles, Loader2, Trash2 } from "lucide-react";
+import { CalendarDays, Dumbbell, Plus, TrendingUp, Activity, Sparkles, Loader2, Trash2, X } from "lucide-react";
 
 // ── Seed data ──────────────────────────────────────────────────────────────
 const seedLogs = [
@@ -116,7 +116,11 @@ function loadFromStorage(key, fallback) {
 }
 
 function blankExercise(name = "") {
-  return { name, setsReps: "", weight: "", notes: "" };
+  return { name, sets: [{ reps: "", weight: "" }], notes: "" };
+}
+
+function blankSet() {
+  return { reps: "", weight: "" };
 }
 
 function todayStr() {
@@ -137,7 +141,12 @@ async function fetchGeminiRecommendations(logs) {
         `Date: ${log.date} | Type: ${log.workout} | Title: ${log.title}
 Energy: ${log.energy || "N/A"} | Pump: ${log.pump || "N/A"} | Pain: ${log.pain || "N/A"}
 Notes: ${log.notes}
-Exercises:\n${log.exercises.map((e) => `  - ${e.name}: ${e.setsReps} @ ${e.weight}${e.notes ? ` (${e.notes})` : ""}`).join("\n")}`
+Exercises:\n${log.exercises.map((e) => {
+        const setsStr = e.sets
+          ? e.sets.map((s, i) => `Set ${i + 1}: ${s.reps || "?"}reps @ ${s.weight || "?"}kg`).join(", ")
+          : `${e.setsReps} @ ${e.weight}`;
+        return `  - ${e.name}: ${setsStr}${e.notes ? ` (${e.notes})` : ""}`;
+      }).join("\n")}`
     )
     .join("\n\n---\n\n");
 
@@ -229,9 +238,32 @@ export default function WorkoutMemoryDashboard() {
   const removeExercise = (index) =>
     setForm((prev) => ({ ...prev, exercises: prev.exercises.filter((_, i) => i !== index) }));
 
+  const addSet = (exIndex) =>
+    setForm((prev) => {
+      const next = [...prev.exercises];
+      next[exIndex] = { ...next[exIndex], sets: [...next[exIndex].sets, blankSet()] };
+      return { ...prev, exercises: next };
+    });
+
+  const removeSet = (exIndex, setIndex) =>
+    setForm((prev) => {
+      const next = [...prev.exercises];
+      next[exIndex] = { ...next[exIndex], sets: next[exIndex].sets.filter((_, i) => i !== setIndex) };
+      return { ...prev, exercises: next };
+    });
+
+  const updateSet = (exIndex, setIndex, field, value) =>
+    setForm((prev) => {
+      const next = [...prev.exercises];
+      const sets = [...next[exIndex].sets];
+      sets[setIndex] = { ...sets[setIndex], [field]: value };
+      next[exIndex] = { ...next[exIndex], sets };
+      return { ...prev, exercises: next };
+    });
+
   const saveLog = () => {
     const cleanExercises = form.exercises.filter(
-      (e) => e.name.trim() || e.setsReps.trim() || e.weight.trim() || e.notes.trim()
+      (e) => e.name.trim() || e.sets.some((s) => s.reps.trim() || s.weight.trim()) || e.notes.trim()
     );
     const newLog = {
       id: Date.now(),
@@ -346,19 +378,61 @@ export default function WorkoutMemoryDashboard() {
                     Add Exercise
                   </Button>
                 </div>
-                {form.exercises.map((exercise, index) => (
-                  <Card key={index} className="rounded-2xl border-zinc-200 shadow-sm">
-                    <CardContent className="p-3 space-y-2 md:space-y-0 md:grid md:gap-3 md:grid-cols-4 md:p-4">
-                      <Input value={exercise.name} onChange={(e) => updateExercise(index, "name", e.target.value)} placeholder="Exercise" />
-                      <div className="grid grid-cols-2 gap-2 md:contents">
-                        <Input value={exercise.setsReps} onChange={(e) => updateExercise(index, "setsReps", e.target.value)} placeholder="Sets × Reps" />
-                        <Input value={exercise.weight} onChange={(e) => updateExercise(index, "weight", e.target.value)} placeholder="Weight" />
-                      </div>
-                      <div className="flex gap-2">
-                        <Input value={exercise.notes} onChange={(e) => updateExercise(index, "notes", e.target.value)} placeholder="Notes" />
-                        <Button variant="ghost" size="icon" onClick={() => removeExercise(index)} className="shrink-0 text-zinc-400 hover:text-red-500">
+                {form.exercises.map((exercise, exIdx) => (
+                  <Card key={exIdx} className="rounded-2xl border-zinc-200 shadow-sm">
+                    <CardContent className="p-3 space-y-3">
+                      {/* Exercise name + delete */}
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={exercise.name}
+                          onChange={(e) => updateExercise(exIdx, "name", e.target.value)}
+                          placeholder="Exercise name"
+                          className="flex-1 font-medium"
+                        />
+                        <Button variant="ghost" size="icon" onClick={() => removeExercise(exIdx)} className="shrink-0 text-zinc-400 hover:text-red-500">
                           <Trash2 className="h-4 w-4" />
                         </Button>
+                      </div>
+
+                      {/* Per-set rows */}
+                      <div className="space-y-2">
+                        {exercise.sets.map((set, setIdx) => (
+                          <div key={setIdx} className="flex items-center gap-2">
+                            <span className="w-12 shrink-0 text-xs font-medium text-zinc-400">Set {setIdx + 1}</span>
+                            <Input
+                              value={set.reps}
+                              onChange={(e) => updateSet(exIdx, setIdx, "reps", e.target.value)}
+                              placeholder="Reps"
+                              className="w-20 text-center"
+                            />
+                            <span className="shrink-0 text-xs text-zinc-400">reps @</span>
+                            <Input
+                              value={set.weight}
+                              onChange={(e) => updateSet(exIdx, setIdx, "weight", e.target.value)}
+                              placeholder="Weight"
+                              className="flex-1 text-center"
+                            />
+                            {exercise.sets.length > 1 && (
+                              <Button variant="ghost" size="icon" onClick={() => removeSet(exIdx, setIdx)} className="shrink-0 h-7 w-7 text-zinc-300 hover:text-red-400">
+                                <X className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Add set + notes */}
+                      <div className="flex items-center gap-3">
+                        <Button variant="outline" size="sm" onClick={() => addSet(exIdx)} className="text-xs h-7 px-3">
+                          <Plus className="mr-1 h-3 w-3" />
+                          Add Set
+                        </Button>
+                        <Input
+                          value={exercise.notes}
+                          onChange={(e) => updateExercise(exIdx, "notes", e.target.value)}
+                          placeholder="Notes (optional)"
+                          className="flex-1 text-xs"
+                        />
                       </div>
                     </CardContent>
                   </Card>
@@ -580,9 +654,24 @@ function SessionDetail({ log }) {
             {log.exercises.map((exercise, index) => (
               <div key={index} className="rounded-2xl border border-zinc-200 p-4">
                 <div className="font-medium">{exercise.name}</div>
-                <div className="mt-1 text-sm text-zinc-600">
-                  {exercise.setsReps || "—"} • {exercise.weight || "—"}
-                </div>
+                {/* New per-set format */}
+                {exercise.sets ? (
+                  <div className="mt-2 space-y-1">
+                    {exercise.sets.map((set, si) => (
+                      <div key={si} className="flex items-center gap-3 text-sm text-zinc-600">
+                        <span className="w-10 shrink-0 text-xs text-zinc-400">Set {si + 1}</span>
+                        <span className="font-medium">{set.reps || "—"} reps</span>
+                        <span className="text-zinc-400">@</span>
+                        <span className="font-medium">{set.weight || "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  /* Legacy format */
+                  <div className="mt-1 text-sm text-zinc-600">
+                    {exercise.setsReps || "—"} • {exercise.weight || "—"}
+                  </div>
+                )}
                 {exercise.notes && <div className="mt-2 text-sm text-zinc-500">{exercise.notes}</div>}
               </div>
             ))}
