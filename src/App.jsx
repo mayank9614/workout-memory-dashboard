@@ -151,19 +151,44 @@ Exercises:\n${log.exercises.map((e) => {
     )
     .join("\n\n---\n\n");
 
-  const prompt = `You are an expert strength and conditioning coach. Analyze the following PPL (Push/Pull/Legs) workout logs and provide a structured coaching report.
+  const prompt = `You are an expert strength and conditioning coach. Analyze the following PPL (Push/Pull/Legs) workout logs and provide a structured coaching report with exercise variations to prevent plateaus and add stimulus variety.
 
 ${logsText}
 
 Respond ONLY with a JSON object (no markdown fences) in this exact shape:
 {
   "observations": ["string", ...],
-  "push": { "title": "Next Push Session", "focus": "string", "actions": ["string", ...] },
-  "pull": { "title": "Next Pull Session", "focus": "string", "actions": ["string", ...] },
-  "legs": { "title": "Next Legs Session", "focus": "string", "actions": ["string", ...] },
+  "push": {
+    "title": "Next Push Session",
+    "focus": "string",
+    "actions": ["string", ...],
+    "variations": [
+      { "swap": "Current exercise name", "with": "Alternative exercise", "reason": "Why this swap adds value" }
+    ]
+  },
+  "pull": {
+    "title": "Next Pull Session",
+    "focus": "string",
+    "actions": ["string", ...],
+    "variations": [
+      { "swap": "Current exercise name", "with": "Alternative exercise", "reason": "Why this swap adds value" }
+    ]
+  },
+  "legs": {
+    "title": "Next Legs Session",
+    "focus": "string",
+    "actions": ["string", ...],
+    "variations": [
+      { "swap": "Current exercise name", "with": "Alternative exercise", "reason": "Why this swap adds value" }
+    ]
+  },
   "warnings": ["string", ...]
 }
-Keep each string concise (1-2 sentences). "warnings" may be an empty array if there are no injury/overtraining concerns.`;
+Rules:
+- Keep each string concise (1-2 sentences).
+- Provide 2-3 variations per session based on what the user has been doing repeatedly.
+- Variations should target the same muscle group but with different angles, equipment, or rep schemes.
+- "warnings" may be an empty array if there are no injury/overtraining concerns.`;
 
   const result = await model.generateContent(prompt);
   const text = result.response.text().trim();
@@ -798,7 +823,8 @@ function SessionPlanCard({ data, color }) {
         <CardTitle className={`text-base ${c.title}`}>{data.title}</CardTitle>
         {data.focus && <p className={`text-sm ${c.focus} font-medium`}>{data.focus}</p>}
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
+        {/* Actions */}
         <ul className="space-y-2">
           {data.actions?.map((action, i) => (
             <li key={i} className="flex gap-2 text-sm text-zinc-700">
@@ -807,6 +833,27 @@ function SessionPlanCard({ data, color }) {
             </li>
           ))}
         </ul>
+
+        {/* Variations */}
+        {data.variations?.length > 0 && (
+          <div>
+            <div className={`mb-2 text-xs font-semibold uppercase tracking-wide ${c.title} opacity-70`}>
+              Variations to try
+            </div>
+            <div className="space-y-2">
+              {data.variations.map((v, i) => (
+                <div key={i} className="rounded-xl border border-white/60 bg-white/50 p-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-medium text-zinc-500 line-through">{v.swap}</span>
+                    <span className="text-zinc-400">→</span>
+                    <span className={`font-semibold ${c.title}`}>{v.with}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-zinc-500">{v.reason}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
