@@ -129,7 +129,7 @@ async function fetchGeminiRecommendations(logs) {
   if (!apiKey) throw new Error("VITE_GEMINI_API_KEY is not set. Add it to your .env file.");
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
   const logsText = logs
     .map(
@@ -282,26 +282,26 @@ export default function WorkoutMemoryDashboard() {
       <div className="mx-auto max-w-7xl space-y-6">
 
         {/* Header */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight">Workout Memory Dashboard</h1>
+            <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Workout Memory Dashboard</h1>
             <p className="mt-1 text-sm text-zinc-500">
               PPL split tracker — log sessions, review history, and get AI coaching insights.
             </p>
           </div>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button className="rounded-2xl px-5">
+              <Button className="w-full rounded-2xl px-5 sm:w-auto">
                 <Plus className="mr-2 h-4 w-4" />
                 Add Workout Log
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
+            <DialogContent className="max-h-[90vh] w-[95vw] overflow-y-auto rounded-2xl sm:max-w-4xl">
               <DialogHeader>
                 <DialogTitle>New Workout Entry</DialogTitle>
               </DialogHeader>
 
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
                 <div>
                   <label className="mb-2 block text-sm font-medium">Date</label>
                   <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
@@ -323,7 +323,7 @@ export default function WorkoutMemoryDashboard() {
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
                 <div>
                   <label className="mb-2 block text-sm font-medium">Energy</label>
                   <Input value={form.energy} onChange={(e) => setForm({ ...form, energy: e.target.value })} placeholder="High / Medium / Low" />
@@ -348,10 +348,12 @@ export default function WorkoutMemoryDashboard() {
                 </div>
                 {form.exercises.map((exercise, index) => (
                   <Card key={index} className="rounded-2xl border-zinc-200 shadow-sm">
-                    <CardContent className="grid gap-3 p-4 md:grid-cols-4">
+                    <CardContent className="p-3 space-y-2 md:space-y-0 md:grid md:gap-3 md:grid-cols-4 md:p-4">
                       <Input value={exercise.name} onChange={(e) => updateExercise(index, "name", e.target.value)} placeholder="Exercise" />
-                      <Input value={exercise.setsReps} onChange={(e) => updateExercise(index, "setsReps", e.target.value)} placeholder="Sets × Reps" />
-                      <Input value={exercise.weight} onChange={(e) => updateExercise(index, "weight", e.target.value)} placeholder="Weight" />
+                      <div className="grid grid-cols-2 gap-2 md:contents">
+                        <Input value={exercise.setsReps} onChange={(e) => updateExercise(index, "setsReps", e.target.value)} placeholder="Sets × Reps" />
+                        <Input value={exercise.weight} onChange={(e) => updateExercise(index, "weight", e.target.value)} placeholder="Weight" />
+                      </div>
                       <div className="flex gap-2">
                         <Input value={exercise.notes} onChange={(e) => updateExercise(index, "notes", e.target.value)} placeholder="Notes" />
                         <Button variant="ghost" size="icon" onClick={() => removeExercise(index)} className="shrink-0 text-zinc-400 hover:text-red-500">
@@ -381,7 +383,7 @@ export default function WorkoutMemoryDashboard() {
         </div>
 
         {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
           <StatCard icon={<Dumbbell className="h-4 w-4" />} label="Total Sessions" value={stats.totalSessions} />
           <StatCard icon={<TrendingUp className="h-4 w-4" />} label="Push Sessions" value={stats.pushCount} />
           <StatCard icon={<Activity className="h-4 w-4" />} label="Pull Sessions" value={stats.pullCount} />
@@ -391,9 +393,9 @@ export default function WorkoutMemoryDashboard() {
         {/* Tabs */}
         <Tabs defaultValue="history" className="space-y-4">
           <TabsList className="grid w-full grid-cols-3 rounded-2xl">
-            <TabsTrigger value="history">History</TabsTrigger>
-            <TabsTrigger value="current">Selected Session</TabsTrigger>
-            <TabsTrigger value="ai">AI Coaching</TabsTrigger>
+            <TabsTrigger value="history" className="text-xs sm:text-sm">History</TabsTrigger>
+            <TabsTrigger value="current" className="text-xs sm:text-sm">Session</TabsTrigger>
+            <TabsTrigger value="ai" className="text-xs sm:text-sm">AI Coaching</TabsTrigger>
           </TabsList>
 
           {/* History tab */}
@@ -411,7 +413,7 @@ export default function WorkoutMemoryDashboard() {
                     <div key={log.id} className="relative group">
                       <button
                         onClick={() => setSelectedId(log.id)}
-                        className={`w-full rounded-2xl border p-4 text-left transition ${
+                        className={`w-full rounded-2xl border p-4 pr-10 text-left transition ${
                           selectedId === log.id
                             ? "border-zinc-900 bg-zinc-900 text-white"
                             : "border-zinc-200 bg-white hover:bg-zinc-50"
@@ -427,7 +429,7 @@ export default function WorkoutMemoryDashboard() {
                       </button>
                       <button
                         onClick={() => deleteLog(log.id)}
-                        className="absolute right-3 top-3 hidden group-hover:flex items-center justify-center rounded-lg p-1 text-zinc-400 hover:text-red-500 hover:bg-red-50 transition"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-lg p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 transition opacity-40 group-hover:opacity-100"
                         title="Delete log"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -448,12 +450,12 @@ export default function WorkoutMemoryDashboard() {
           {/* AI Coaching tab */}
           <TabsContent value="ai">
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold">AI Coaching Insights</h2>
                   <p className="text-sm text-zinc-500">Powered by Gemini — analyzes your last {logs.length} session{logs.length !== 1 ? "s" : ""}.</p>
                 </div>
-                <Button onClick={handleGetRecommendations} disabled={loadingAI || logs.length === 0} className="rounded-2xl px-5">
+                <Button onClick={handleGetRecommendations} disabled={loadingAI || logs.length === 0} className="w-full rounded-2xl px-5 sm:w-auto">
                   {loadingAI ? (
                     <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analyzing…</>
                   ) : (
@@ -566,10 +568,10 @@ function SessionDetail({ log }) {
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 grid-cols-3">
           <InfoBox label="Energy" value={log.energy || "—"} />
           <InfoBox label="Pump" value={log.pump || "—"} />
-          <InfoBox label="Pain / Injury" value={log.pain || "—"} />
+          <InfoBox label="Pain" value={log.pain || "—"} />
         </div>
 
         <div>
