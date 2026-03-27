@@ -178,6 +178,8 @@ export default function WorkoutMemoryDashboard() {
   const [selectedId, setSelectedId] = useState(null);
   const [syncing, setSyncing] = useState(true);
   const [syncError, setSyncError] = useState("");
+  const [pendingMigration, setPendingMigration] = useState([]);
+  const [migrating, setMigrating] = useState(false);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     date: todayStr(),
@@ -205,10 +207,17 @@ export default function WorkoutMemoryDashboard() {
 
       if (error) {
         setSyncError("Could not connect to database. Showing local data.");
-        // fall back to localStorage
         const local = loadFromStorage(LOGS_KEY, []);
         setLogs(local);
         setSelectedId(local[0]?.id ?? null);
+      } else if (data.length === 0) {
+        // Supabase is empty — check if there's local data to migrate
+        const local = loadFromStorage(LOGS_KEY, []);
+        if (local.length > 0) {
+          setPendingMigration(local);
+          setLogs(local);
+          setSelectedId(local[0]?.id ?? null);
+        }
       } else {
         setLogs(data);
         setSelectedId(data[0]?.id ?? null);
@@ -331,6 +340,18 @@ export default function WorkoutMemoryDashboard() {
     if (error) console.error("Supabase delete failed:", error.message);
   };
 
+  const migrateToSupabase = async () => {
+    setMigrating(true);
+    const { error } = await supabase.from("workout_logs").insert(pendingMigration);
+    if (error) {
+      setSyncError("Migration failed: " + error.message);
+    } else {
+      setPendingMigration([]);
+      setSyncError("");
+    }
+    setMigrating(false);
+  };
+
   const handleGetRecommendations = async () => {
     setLoadingAI(true);
     setAiError("");
@@ -358,6 +379,22 @@ export default function WorkoutMemoryDashboard() {
         {syncError && (
           <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2 text-sm text-amber-700">
             {syncError}
+          </div>
+        )}
+        {pendingMigration.length > 0 && (
+          <div className="flex flex-col gap-3 rounded-2xl bg-blue-50 border border-blue-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-blue-800">
+              <span className="font-semibold">{pendingMigration.length} local log{pendingMigration.length !== 1 ? "s" : ""} found</span>
+              {" "}— not yet saved to database. Migrate now to access them on all devices.
+            </div>
+            <Button
+              size="sm"
+              onClick={migrateToSupabase}
+              disabled={migrating}
+              className="shrink-0 rounded-xl bg-blue-700 hover:bg-blue-800 text-white"
+            >
+              {migrating ? <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />Migrating…</> : "Migrate to Database"}
+            </Button>
           </div>
         )}
 
