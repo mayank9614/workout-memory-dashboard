@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { supabase } from "@/lib/supabase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -173,11 +174,10 @@ Keep each string concise (1-2 sentences). "warnings" may be an empty array if th
 
 // ── Main component ─────────────────────────────────────────────────────────
 export default function WorkoutMemoryDashboard() {
-  const [logs, setLogs] = useState(() => loadFromStorage(LOGS_KEY, seedLogs));
-  const [selectedId, setSelectedId] = useState(() => {
-    const saved = loadFromStorage(LOGS_KEY, seedLogs);
-    return saved[0]?.id ?? seedLogs[0].id;
-  });
+  const [logs, setLogs] = useState(() => loadFromStorage(LOGS_KEY, []));
+  const [selectedId, setSelectedId] = useState(null);
+  const [syncing, setSyncing] = useState(true);
+  const [syncError, setSyncError] = useState("");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     date: todayStr(),
@@ -193,12 +193,33 @@ export default function WorkoutMemoryDashboard() {
   const [loadingAI, setLoadingAI] = useState(false);
   const [aiError, setAiError] = useState("");
 
-  // Persist logs to localStorage whenever they change
+  // Load logs from Supabase on mount
   useEffect(() => {
-    localStorage.setItem(LOGS_KEY, JSON.stringify(logs));
-  }, [logs]);
+    async function fetchLogs() {
+      setSyncing(true);
+      setSyncError("");
+      const { data, error } = await supabase
+        .from("workout_logs")
+        .select("*")
+        .order("date", { ascending: false });
 
-  // Persist recommendations
+      if (error) {
+        setSyncError("Could not connect to database. Showing local data.");
+        // fall back to localStorage
+        const local = loadFromStorage(LOGS_KEY, []);
+        setLogs(local);
+        setSelectedId(local[0]?.id ?? null);
+      } else {
+        setLogs(data);
+        setSelectedId(data[0]?.id ?? null);
+        localStorage.setItem(LOGS_KEY, JSON.stringify(data));
+      }
+      setSyncing(false);
+    }
+    fetchLogs();
+  }, []);
+
+  // Cache recommendations
   useEffect(() => {
     if (recommendations) localStorage.setItem(RECS_KEY, JSON.stringify(recommendations));
   }, [recommendations]);
@@ -261,7 +282,7 @@ export default function WorkoutMemoryDashboard() {
       return { ...prev, exercises: next };
     });
 
-  const saveLog = () => {
+  const saveLog = async () => {
     const cleanExercises = form.exercises.filter(
       (e) => e.name.trim() || e.sets.some((s) => s.reps.trim() || s.weight.trim()) || e.notes.trim()
     );
@@ -271,9 +292,11 @@ export default function WorkoutMemoryDashboard() {
       title: form.title || form.workout,
       exercises: cleanExercises,
     };
+
+    // Optimistic update — UI responds instantly
     setLogs((prev) => [newLog, ...prev]);
     setSelectedId(newLog.id);
-    setRecommendations(null); // invalidate cached recommendations
+    setRecommendations(null);
     localStorage.removeItem(RECS_KEY);
     setOpen(false);
     setForm({
@@ -286,14 +309,26 @@ export default function WorkoutMemoryDashboard() {
       notes: "",
       exercises: templates.Push.map((x) => blankExercise(x)),
     });
+
+    // Persist to Supabase
+    const { error } = await supabase.from("workout_logs").insert(newLog);
+    if (error) {
+      console.error("Supabase insert failed:", error.message);
+      setSyncError("Saved locally but failed to sync to database.");
+    } else {
+      setSyncError("");
+      localStorage.setItem(LOGS_KEY, JSON.stringify([newLog, ...logs]));
+    }
   };
 
-  const deleteLog = (id) => {
-    setLogs((prev) => prev.filter((l) => l.id !== id));
-    if (selectedId === id) {
-      const remaining = logs.filter((l) => l.id !== id);
-      setSelectedId(remaining[0]?.id ?? null);
-    }
+  const deleteLog = async (id) => {
+    const remaining = logs.filter((l) => l.id !== id);
+    setLogs(remaining);
+    if (selectedId === id) setSelectedId(remaining[0]?.id ?? null);
+    localStorage.setItem(LOGS_KEY, JSON.stringify(remaining));
+
+    const { error } = await supabase.from("workout_logs").delete().eq("id", id);
+    if (error) console.error("Supabase delete failed:", error.message);
   };
 
   const handleGetRecommendations = async () => {
@@ -312,6 +347,19 @@ export default function WorkoutMemoryDashboard() {
   return (
     <div className="min-h-screen bg-zinc-50 p-4 md:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
+
+        {/* Sync status */}
+        {syncing && (
+          <div className="flex items-center gap-2 rounded-2xl bg-zinc-100 px-4 py-2 text-sm text-zinc-500">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Syncing with database…
+          </div>
+        )}
+        {syncError && (
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2 text-sm text-amber-700">
+            {syncError}
+          </div>
+        )}
 
         {/* Header */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
