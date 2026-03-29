@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CalendarDays, Dumbbell, Plus, TrendingUp, Activity, Sparkles, Loader2, Trash2, X } from "lucide-react";
+import { CalendarDays, Dumbbell, Plus, TrendingUp, Activity, Sparkles, Loader2, Trash2, X, Heart, Trophy, Flame, Zap } from "lucide-react";
 
 // ── Seed data ──────────────────────────────────────────────────────────────
 const seedLogs = [
@@ -104,8 +104,104 @@ const templates = {
   ],
 };
 
+// ── Lower Back & Cricket Cardio constants ──────────────────────────────────
+const LOWER_BACK_PROGRAM = [
+  {
+    focus: "Mobility Reset",
+    classes: { border: "border-rose-200", bg: "bg-rose-50", title: "text-rose-800", bar: "bg-rose-400", badge: "bg-rose-100 text-rose-700" },
+    exercises: [
+      { name: "Cat-Cow Stretch", prescription: "2 × 10 slow reps", tip: "Coordinate breath with movement" },
+      { name: "Child's Pose", prescription: "3 × 30s hold", tip: "Breathe into lower back tension" },
+      { name: "Hip Flexor Lunge Stretch", prescription: "2 × 30s each side", tip: "Keep pelvis tucked under" },
+      { name: "Knee-to-Chest Hug", prescription: "2 × 30s each side", tip: "Lying on back, gentle pull" },
+      { name: "Thread the Needle", prescription: "2 × 20s each side", tip: "Releases thoracic & lumbar rotation" },
+    ],
+  },
+  {
+    focus: "McGill Big 3",
+    classes: { border: "border-blue-200", bg: "bg-blue-50", title: "text-blue-800", bar: "bg-blue-400", badge: "bg-blue-100 text-blue-700" },
+    exercises: [
+      { name: "Modified Curl-Up", prescription: "3 × 8 reps", tip: "Maintain natural lumbar curve — don't flatten" },
+      { name: "Bird Dog", prescription: "3 × 10 each side", tip: "Hips level, extend slow, 2s hold at top" },
+      { name: "Side Plank", prescription: "3 × 20s each side", tip: "Stack or stagger feet, keep hips lifted" },
+    ],
+  },
+  {
+    focus: "Glute Activation",
+    classes: { border: "border-orange-200", bg: "bg-orange-50", title: "text-orange-800", bar: "bg-orange-400", badge: "bg-orange-100 text-orange-700" },
+    exercises: [
+      { name: "Glute Bridge", prescription: "3 × 15 reps", tip: "Squeeze glutes hard, 1s hold at top" },
+      { name: "Clamshell", prescription: "3 × 15 each side", tip: "Band optional, keep pelvis still" },
+      { name: "Donkey Kick", prescription: "3 × 12 each side", tip: "Don't rotate the hip, brace core" },
+      { name: "Hip Thrust (bodyweight)", prescription: "3 × 12 reps", tip: "Full hip extension, squeeze at top" },
+    ],
+  },
+  {
+    focus: "Core Stability",
+    classes: { border: "border-emerald-200", bg: "bg-emerald-50", title: "text-emerald-800", bar: "bg-emerald-400", badge: "bg-emerald-100 text-emerald-700" },
+    exercises: [
+      { name: "Dead Bug", prescription: "3 × 8 each side", tip: "Press lower back firmly into floor" },
+      { name: "Plank", prescription: "3 × 30s", tip: "Breathe slowly, don't hold your breath" },
+      { name: "Pallof Press / Isometric Hold", prescription: "3 × 10 each side", tip: "Resist rotation, keep hips square" },
+      { name: "Bird Dog", prescription: "2 × 10 each side", tip: "Midweek McGill reinforcement" },
+    ],
+  },
+  {
+    focus: "Hip Mobility & Hinge",
+    classes: { border: "border-purple-200", bg: "bg-purple-50", title: "text-purple-800", bar: "bg-purple-400", badge: "bg-purple-100 text-purple-700" },
+    exercises: [
+      { name: "90/90 Hip Stretch", prescription: "2 × 60s each side", tip: "Sit tall, lean gently forward" },
+      { name: "Romanian Deadlift (light)", prescription: "3 × 12 reps", tip: "Hinge at hips, soft knees, neutral spine" },
+      { name: "Good Morning (bodyweight)", prescription: "3 × 12 reps", tip: "Hands on hips, hinge till parallel" },
+      { name: "Pigeon Pose", prescription: "2 × 45s each side", tip: "Key for cricketers — hip flexor & glute release" },
+    ],
+  },
+  {
+    focus: "McGill Progression",
+    classes: { border: "border-blue-200", bg: "bg-blue-50", title: "text-blue-800", bar: "bg-blue-400", badge: "bg-blue-100 text-blue-700" },
+    exercises: [
+      { name: "Modified Curl-Up", prescription: "3 × 10 reps", tip: "+2 reps from Monday" },
+      { name: "Bird Dog with 3s pause", prescription: "3 × 10 each side", tip: "3s hold at top, controlled return" },
+      { name: "Side Plank with hip dip", prescription: "3 × 25s each side", tip: "+5s from Monday if able" },
+      { name: "Single-Leg Glute Bridge", prescription: "3 × 10 each side", tip: "Progress from bilateral bridge" },
+    ],
+  },
+  {
+    focus: "Active Recovery",
+    classes: { border: "border-teal-200", bg: "bg-teal-50", title: "text-teal-800", bar: "bg-teal-400", badge: "bg-teal-100 text-teal-700" },
+    exercises: [
+      { name: "Gentle Walk", prescription: "20–30 min", tip: "Low intensity — promotes circulation & healing" },
+      { name: "Lumbar Extension Stretch", prescription: "3 × 30s", tip: "Lie face-down, prop on elbows gently" },
+      { name: "Supine Twist", prescription: "2 × 30s each side", tip: "Breathe into the rotation" },
+      { name: "Cat-Cow Stretch", prescription: "2 × 10 slow reps", tip: "Bookend the week with mobility" },
+    ],
+  },
+];
+
+const CRICKET_LEVELS = [
+  { level: 1, name: "Bench Warmer", minXp: 0, maxXp: 150 },
+  { level: 2, name: "12th Man", minXp: 150, maxXp: 400 },
+  { level: 3, name: "Club Cricketer", minXp: 400, maxXp: 800 },
+  { level: 4, name: "District Player", minXp: 800, maxXp: 1500 },
+  { level: 5, name: "State Contender", minXp: 1500, maxXp: 2500 },
+  { level: 6, name: "IPL Standard", minXp: 2500, maxXp: 4000 },
+  { level: 7, name: "World Class", minXp: 4000, maxXp: 99999 },
+];
+
+const CARDIO_DRILLS = [
+  { id: "match_sim", name: "Match Simulation", xp: 60, emoji: "🏆", desc: "Full intensity 2hr fielding/batting practice" },
+  { id: "boundary_sprint", name: "Boundary Sprint", xp: 50, emoji: "⚡", desc: "20m sprint × 10, 30s rest between sets" },
+  { id: "fielding_circuit", name: "Fielding Circuit", xp: 45, emoji: "🏏", desc: "Dive, get up, sprint 10m sequence" },
+  { id: "interval_run", name: "400m Intervals", xp: 40, emoji: "🏃", desc: "6 × 400m with 90s rest between" },
+  { id: "shuttle_run", name: "Shuttle Runs", xp: 35, emoji: "↔️", desc: "10m shuttles × 15, 45s rest" },
+  { id: "steady_jog", name: "Steady Jog", xp: 30, emoji: "🌿", desc: "20–30 min easy aerobic base work" },
+  { id: "yoga_flex", name: "Yoga / Flexibility", xp: 20, emoji: "🧘", desc: "Lower back focused yoga & mobility flow" },
+];
+
 const LOGS_KEY = "wmd_logs";
 const RECS_KEY = "wmd_recommendations";
+const LB_LOG_KEY = "wmd_lb_log";
+const CARDIO_LOG_KEY = "wmd_cardio_log";
 
 function loadFromStorage(key, fallback) {
   try {
@@ -219,24 +315,27 @@ export default function WorkoutMemoryDashboard() {
   const [recommendations, setRecommendations] = useState(() => loadFromStorage(RECS_KEY, null));
   const [loadingAI, setLoadingAI] = useState(false);
   const [aiError, setAiError] = useState("");
+  const [lowerBackLog, setLowerBackLog] = useState(() => loadFromStorage(LB_LOG_KEY, {}));
+  const [cardioLog, setCardioLog] = useState(() => loadFromStorage(CARDIO_LOG_KEY, []));
 
-  // Load logs from Supabase on mount
+  // Load all data from Supabase on mount
   useEffect(() => {
-    async function fetchLogs() {
+    async function fetchAll() {
       setSyncing(true);
       setSyncError("");
-      const { data, error } = await supabase
+
+      // Workout logs
+      const { data: logsData, error: logsError } = await supabase
         .from("workout_logs")
         .select("*")
         .order("date", { ascending: false });
 
-      if (error) {
+      if (logsError) {
         setSyncError("Could not connect to database. Showing local data.");
         const local = loadFromStorage(LOGS_KEY, []);
         setLogs(local);
         setSelectedId(local[0]?.id ?? null);
-      } else if (data.length === 0) {
-        // Supabase is empty — check if there's local data to migrate
+      } else if (logsData.length === 0) {
         const local = loadFromStorage(LOGS_KEY, []);
         if (local.length > 0) {
           setPendingMigration(local);
@@ -244,13 +343,46 @@ export default function WorkoutMemoryDashboard() {
           setSelectedId(local[0]?.id ?? null);
         }
       } else {
-        setLogs(data);
-        setSelectedId(data[0]?.id ?? null);
-        localStorage.setItem(LOGS_KEY, JSON.stringify(data));
+        setLogs(logsData);
+        setSelectedId(logsData[0]?.id ?? null);
+        localStorage.setItem(LOGS_KEY, JSON.stringify(logsData));
       }
+
+      // Lower back log
+      const { data: lbData, error: lbError } = await supabase
+        .from("lower_back_log")
+        .select("*");
+      if (!lbError && lbData.length > 0) {
+        const mapped = lbData.reduce((acc, row) => {
+          acc[row.date] = row.completed_indices || [];
+          return acc;
+        }, {});
+        setLowerBackLog(mapped);
+        localStorage.setItem(LB_LOG_KEY, JSON.stringify(mapped));
+      }
+
+      // Cardio sessions
+      const { data: cardioData, error: cardioError } = await supabase
+        .from("cardio_sessions")
+        .select("*")
+        .order("date", { ascending: false });
+      if (!cardioError && cardioData.length > 0) {
+        // Map snake_case db columns to camelCase used in app
+        const mapped = cardioData.map((r) => ({
+          id: r.id,
+          date: r.date,
+          drillId: r.drill_id,
+          name: r.name,
+          xp: r.xp,
+          notes: r.notes,
+        }));
+        setCardioLog(mapped);
+        localStorage.setItem(CARDIO_LOG_KEY, JSON.stringify(mapped));
+      }
+
       setSyncing(false);
     }
-    fetchLogs();
+    fetchAll();
   }, []);
 
   // Cache recommendations
@@ -363,6 +495,39 @@ export default function WorkoutMemoryDashboard() {
 
     const { error } = await supabase.from("workout_logs").delete().eq("id", id);
     if (error) console.error("Supabase delete failed:", error.message);
+  };
+
+  const toggleLowerBackExercise = async (index) => {
+    const today = todayStr();
+    let nextIndices;
+    setLowerBackLog((prev) => {
+      const done = prev[today] || [];
+      nextIndices = done.includes(index) ? done.filter((i) => i !== index) : [...done, index];
+      const updated = { ...prev, [today]: nextIndices };
+      localStorage.setItem(LB_LOG_KEY, JSON.stringify(updated));
+      return updated;
+    });
+    // Upsert — date is primary key so this updates if row exists
+    await supabase
+      .from("lower_back_log")
+      .upsert({ date: today, completed_indices: nextIndices ?? [] });
+  };
+
+  const logCardioSession = async (drill, notes = "") => {
+    const entry = { id: Date.now(), date: todayStr(), drillId: drill.id, name: drill.name, xp: drill.xp, notes };
+    setCardioLog((prev) => {
+      const updated = [entry, ...prev];
+      localStorage.setItem(CARDIO_LOG_KEY, JSON.stringify(updated));
+      return updated;
+    });
+    await supabase.from("cardio_sessions").insert({
+      id: entry.id,
+      date: entry.date,
+      drill_id: entry.drillId,
+      name: entry.name,
+      xp: entry.xp,
+      notes: entry.notes,
+    });
   };
 
   const migrateToSupabase = async () => {
@@ -576,10 +741,11 @@ export default function WorkoutMemoryDashboard() {
 
         {/* Tabs */}
         <Tabs defaultValue="history" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-3 rounded-2xl">
+          <TabsList className="grid w-full grid-cols-4 rounded-2xl">
             <TabsTrigger value="history" className="text-xs sm:text-sm">History</TabsTrigger>
             <TabsTrigger value="current" className="text-xs sm:text-sm">Session</TabsTrigger>
             <TabsTrigger value="ai" className="text-xs sm:text-sm">AI Coaching</TabsTrigger>
+            <TabsTrigger value="cricket" className="text-xs sm:text-sm">Cricket Fit</TabsTrigger>
           </TabsList>
 
           {/* History tab */}
@@ -709,6 +875,21 @@ export default function WorkoutMemoryDashboard() {
               )}
             </div>
           </TabsContent>
+
+          {/* Cricket Fit tab */}
+          <TabsContent value="cricket">
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-lg font-semibold">Cricket Fit</h2>
+                <p className="text-sm text-zinc-500">Daily lower back rehab + gamified cardio to field a full innings.</p>
+              </div>
+              <LowerBackCard
+                lowerBackLog={lowerBackLog}
+                onToggle={toggleLowerBackExercise}
+              />
+              <CardioChallenge cardioLog={cardioLog} onLog={logCardioSession} />
+            </div>
+          </TabsContent>
         </Tabs>
       </div>
     </div>
@@ -813,6 +994,268 @@ const colorMap = {
   green: { border: "border-green-200", bg: "bg-green-50", title: "text-green-800", bullet: "bg-green-400", focus: "text-green-700" },
   purple: { border: "border-purple-200", bg: "bg-purple-50", title: "text-purple-800", bullet: "bg-purple-400", focus: "text-purple-700" },
 };
+
+// ── LowerBackCard ───────────────────────────────────────────────────────────
+function LowerBackCard({ lowerBackLog, onToggle }) {
+  const today = new Date();
+  const dayIndex = today.getDay();
+  const program = LOWER_BACK_PROGRAM[dayIndex];
+  const todayStr = today.toISOString().slice(0, 10);
+  const completed = lowerBackLog[todayStr] || [];
+  const totalExercises = program.exercises.length;
+  const completedCount = completed.length;
+  const allDone = completedCount === totalExercises;
+
+  // Streak: count consecutive days with at least 1 exercise done
+  const streak = React.useMemo(() => {
+    let count = 0;
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const ds = d.toISOString().slice(0, 10);
+      if ((lowerBackLog[ds] || []).length > 0) count++;
+      else break;
+    }
+    return count;
+  }, [lowerBackLog]);
+
+  const c = program.classes;
+
+  return (
+    <Card className={`rounded-3xl ${c.border} ${c.bg}`}>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle className={`text-base flex items-center gap-2 ${c.title}`}>
+              <Heart className="h-4 w-4" />
+              Today's Lower Back Program
+            </CardTitle>
+            <p className={`text-sm font-medium mt-0.5 ${c.title} opacity-80`}>
+              {today.toLocaleDateString("en-US", { weekday: "long" })} — {program.focus}
+            </p>
+          </div>
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            {streak > 0 && (
+              <span className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${c.badge}`}>
+                <Flame className="h-3 w-3" /> {streak} day streak
+              </span>
+            )}
+            <span className={`text-xs ${c.title} opacity-60`}>{completedCount}/{totalExercises} done</span>
+          </div>
+        </div>
+        <div className="mt-2 h-2 rounded-full bg-white/50 overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${allDone ? "bg-green-500" : c.bar}`}
+            style={{ width: `${totalExercises > 0 ? (completedCount / totalExercises) * 100 : 0}%` }}
+          />
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {allDone && (
+          <div className="rounded-2xl bg-green-100 border border-green-200 p-3 text-sm text-green-700 font-medium text-center">
+            All done for today! Your lower back will thank you.
+          </div>
+        )}
+        {program.exercises.map((ex, i) => {
+          const done = completed.includes(i);
+          return (
+            <button
+              key={i}
+              onClick={() => onToggle(i)}
+              className={`w-full flex items-start gap-3 rounded-2xl border p-3 text-left transition ${
+                done ? "border-green-300 bg-green-50" : "border-white/60 bg-white/50 hover:bg-white/80"
+              }`}
+            >
+              <div className={`mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 flex items-center justify-center transition ${
+                done ? "border-green-500 bg-green-500" : "border-zinc-300"
+              }`}>
+                {done && <span className="text-white text-xs font-bold">✓</span>}
+              </div>
+              <div className="flex-1">
+                <div className={`text-sm font-medium ${done ? "line-through text-zinc-400" : "text-zinc-800"}`}>{ex.name}</div>
+                <div className="text-xs text-zinc-500 mt-0.5">{ex.prescription}</div>
+                <div className="text-xs text-zinc-400 mt-0.5 italic">{ex.tip}</div>
+              </div>
+            </button>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── CardioChallenge ─────────────────────────────────────────────────────────
+function CardioChallenge({ cardioLog, onLog }) {
+  const [selectedDrill, setSelectedDrill] = useState(null);
+  const [cardioNotes, setCardioNotes] = useState("");
+
+  const totalXP = cardioLog.reduce((sum, s) => sum + s.xp, 0);
+  const currentLevel = CRICKET_LEVELS.reduce((acc, l) => (totalXP >= l.minXp ? l : acc), CRICKET_LEVELS[0]);
+  const nextLevel = CRICKET_LEVELS[currentLevel.level] || null;
+  const xpInLevel = totalXP - currentLevel.minXp;
+  const xpRange = nextLevel ? nextLevel.minXp - currentLevel.minXp : 1;
+  const progress = Math.min((xpInLevel / xpRange) * 100, 100);
+
+  // Cardio streak: consecutive days with at least 1 session
+  const cardioStreak = React.useMemo(() => {
+    const dateSet = new Set(cardioLog.map((s) => s.date));
+    let count = 0;
+    const now = new Date();
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      if (dateSet.has(d.toISOString().slice(0, 10))) count++;
+      else break;
+    }
+    return count;
+  }, [cardioLog]);
+
+  const handleLog = () => {
+    if (!selectedDrill) return;
+    onLog(selectedDrill, cardioNotes);
+    setSelectedDrill(null);
+    setCardioNotes("");
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Level card */}
+      <Card className="rounded-3xl border-zinc-200">
+        <CardHeader>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Trophy className="h-4 w-4 text-yellow-500" />
+                Cricket Cardio Challenge
+              </CardTitle>
+              <p className="text-sm text-zinc-500">Build the stamina to field a full innings without gassing out</p>
+            </div>
+            <div className="text-right shrink-0">
+              <div className="text-xl font-bold text-zinc-800">{totalXP} XP</div>
+              <div className="text-xs text-zinc-500">Level {currentLevel.level}</div>
+              {cardioStreak > 0 && (
+                <div className="flex items-center justify-end gap-1 mt-1 text-xs font-semibold text-orange-600">
+                  <Flame className="h-3 w-3" /> {cardioStreak}d streak
+                </div>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-sm font-semibold text-zinc-700">{currentLevel.name}</span>
+              {nextLevel && (
+                <span className="text-xs text-zinc-400">{nextLevel.minXp - totalXP} XP to {nextLevel.name}</span>
+              )}
+            </div>
+            <div className="h-3 rounded-full bg-zinc-100 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-yellow-400 to-orange-500 transition-all duration-500"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+          <div className="flex gap-1.5 flex-wrap">
+            {CRICKET_LEVELS.map((l) => (
+              <span
+                key={l.level}
+                className={`text-xs px-2.5 py-0.5 rounded-full font-medium border transition ${
+                  l.level === currentLevel.level
+                    ? "bg-yellow-100 text-yellow-800 border-yellow-300"
+                    : l.level < currentLevel.level
+                    ? "bg-zinc-100 text-zinc-500 border-zinc-200"
+                    : "bg-white text-zinc-300 border-dashed border-zinc-200"
+                }`}
+              >
+                {l.level < currentLevel.level ? "✓ " : ""}{l.name}
+              </span>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Log a session */}
+      <Card className="rounded-3xl border-zinc-200">
+        <CardHeader>
+          <CardTitle className="text-base">Log a Session</CardTitle>
+          <p className="text-sm text-zinc-500">Pick a drill to earn XP toward your next level</p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 sm:grid-cols-2">
+            {CARDIO_DRILLS.map((drill) => (
+              <button
+                key={drill.id}
+                onClick={() => setSelectedDrill(selectedDrill?.id === drill.id ? null : drill)}
+                className={`flex items-start gap-3 rounded-2xl border p-3 text-left transition ${
+                  selectedDrill?.id === drill.id
+                    ? "border-zinc-900 bg-zinc-900"
+                    : "border-zinc-200 bg-white hover:bg-zinc-50"
+                }`}
+              >
+                <span className="text-xl shrink-0 mt-0.5">{drill.emoji}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-sm font-semibold ${selectedDrill?.id === drill.id ? "text-white" : "text-zinc-800"}`}>
+                      {drill.name}
+                    </span>
+                    <span className={`text-xs font-bold shrink-0 ${selectedDrill?.id === drill.id ? "text-yellow-300" : "text-yellow-600"}`}>
+                      +{drill.xp} XP
+                    </span>
+                  </div>
+                  <p className={`text-xs mt-0.5 ${selectedDrill?.id === drill.id ? "text-zinc-400" : "text-zinc-500"}`}>
+                    {drill.desc}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {selectedDrill && (
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-zinc-800">
+                <span>{selectedDrill.emoji}</span>
+                <span>{selectedDrill.name}</span>
+                <Badge className="ml-auto bg-yellow-100 text-yellow-700 border-yellow-200 border">+{selectedDrill.xp} XP</Badge>
+              </div>
+              <Textarea
+                value={cardioNotes}
+                onChange={(e) => setCardioNotes(e.target.value)}
+                placeholder="Notes — duration, how you felt, distance, heart rate..."
+                className="min-h-[60px] text-sm"
+              />
+              <Button onClick={handleLog} className="rounded-2xl w-full">
+                <Zap className="mr-2 h-4 w-4" />
+                Log Session (+{selectedDrill.xp} XP)
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Recent sessions */}
+      {cardioLog.length > 0 && (
+        <Card className="rounded-3xl border-zinc-200">
+          <CardHeader><CardTitle className="text-base">Recent Sessions</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {cardioLog.slice(0, 8).map((session) => (
+              <div key={session.id} className="flex items-center gap-3 rounded-2xl border border-zinc-100 bg-zinc-50 p-3">
+                <span className="text-lg shrink-0">
+                  {CARDIO_DRILLS.find((d) => d.id === session.drillId)?.emoji || "🏃"}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-zinc-800">{session.name}</div>
+                  <div className="text-xs text-zinc-500 truncate">{session.date}{session.notes ? ` — ${session.notes}` : ""}</div>
+                </div>
+                <span className="text-xs font-bold text-yellow-600 shrink-0">+{session.xp} XP</span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
 
 function SessionPlanCard({ data, color }) {
   if (!data) return null;
