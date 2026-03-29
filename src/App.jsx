@@ -670,26 +670,20 @@ export default function WorkoutMemoryDashboard() {
         }
       }
 
-      // PPL routines
-      const { data: routineData, error: routineError } = await supabase
-        .from("ppl_routines")
-        .select("*");
-      if (!routineError && routineData && routineData.length > 0) {
-        const mapped = routineData.reduce((acc, row) => {
-          acc[row.workout_type] = row.exercise_names || [];
-          return acc;
-        }, {});
-        // Only update if all 3 types present
-        if (mapped.Push && mapped.Pull && mapped.Legs) {
-          setSavedRoutine(mapped);
-          localStorage.setItem(ROUTINES_KEY, JSON.stringify(mapped));
-        }
-      } else if (!routineError && routineData && routineData.length === 0) {
-        // Seed Supabase with the default templates
-        const entries = Object.entries(templates).map(([workout_type, exercise_names]) => ({
-          workout_type, exercise_names, updated_at: new Date().toISOString().slice(0, 10),
-        }));
-        await supabase.from("ppl_routines").insert(entries);
+      // PPL routines (stored as JSON in user_settings under key "ppl_routine")
+      const { data: routineRow, error: routineError } = await supabase
+        .from("user_settings")
+        .select("value")
+        .eq("key", "ppl_routine")
+        .maybeSingle();
+      if (!routineError && routineRow?.value) {
+        try {
+          const mapped = JSON.parse(routineRow.value);
+          if (mapped.Push && mapped.Pull && mapped.Legs) {
+            setSavedRoutine(mapped);
+            localStorage.setItem(ROUTINES_KEY, JSON.stringify(mapped));
+          }
+        } catch (_) { /* ignore parse error, keep localStorage default */ }
       }
 
       // Routine customizations
@@ -820,11 +814,9 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
   const saveRoutineToDB = async () => {
     setRoutineSaving(true);
     setRoutineSaveMsg("");
-    const today = new Date().toISOString().slice(0, 10);
-    const entries = Object.entries(savedRoutine).map(([workout_type, exercise_names]) => ({
-      workout_type, exercise_names, updated_at: today,
-    }));
-    const { error } = await supabase.from("ppl_routines").upsert(entries, { onConflict: "workout_type" });
+    const { error } = await supabase
+      .from("user_settings")
+      .upsert({ key: "ppl_routine", value: JSON.stringify(savedRoutine) }, { onConflict: "key" });
     if (error) {
       setRoutineSaveMsg("Save failed: " + error.message);
     } else {
