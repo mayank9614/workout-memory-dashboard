@@ -564,6 +564,8 @@ export default function WorkoutMemoryDashboard() {
   const [absWeek, setAbsWeek] = useState(() => loadFromStorage(ABS_WEEK_KEY, 1));
   const [sessionInsights, setSessionInsights] = useState(() => loadFromStorage(SESSION_INSIGHTS_KEY, {}));
   const [loadingInsightId, setLoadingInsightId] = useState(null);
+  const [forceSyncing, setForceSyncing] = useState(false);
+  const [forceSyncMsg, setForceSyncMsg] = useState("");
 
   // Load all data from Supabase on mount
   useEffect(() => {
@@ -614,17 +616,36 @@ export default function WorkoutMemoryDashboard() {
         .select("*")
         .order("date", { ascending: false });
       if (!cardioError && cardioData.length > 0) {
-        // Map snake_case db columns to camelCase used in app
         const mapped = cardioData.map((r) => ({
-          id: r.id,
-          date: r.date,
-          drillId: r.drill_id,
-          name: r.name,
-          xp: r.xp,
-          notes: r.notes,
+          id: r.id, date: r.date, drillId: r.drill_id,
+          name: r.name, xp: r.xp, notes: r.notes,
         }));
         setCardioLog(mapped);
         localStorage.setItem(CARDIO_LOG_KEY, JSON.stringify(mapped));
+      }
+
+      // Abs log
+      const { data: absData, error: absError } = await supabase.from("abs_log").select("*");
+      if (!absError && absData && absData.length > 0) {
+        const mapped = absData.reduce((acc, row) => {
+          acc[row.session_key] = row.completed_indices || [];
+          return acc;
+        }, {});
+        setAbsLog(mapped);
+        localStorage.setItem(ABS_LOG_KEY, JSON.stringify(mapped));
+      }
+
+      // User settings (abs_week)
+      const { data: settingsData, error: settingsError } = await supabase.from("user_settings").select("*");
+      if (!settingsError && settingsData) {
+        const weekRow = settingsData.find((r) => r.key === "abs_week");
+        if (weekRow) {
+          const week = parseInt(weekRow.value, 10);
+          if (week >= 1 && week <= 4) {
+            setAbsWeek(week);
+            localStorage.setItem(ABS_WEEK_KEY, JSON.stringify(week));
+          }
+        }
       }
 
       setSyncing(false);
@@ -768,34 +789,41 @@ export default function WorkoutMemoryDashboard() {
 
   const toggleLowerBackExercise = async (index) => {
     const today = todayStr();
-    let nextIndices;
-    setLowerBackLog((prev) => {
-      const done = prev[today] || [];
-      nextIndices = done.includes(index) ? done.filter((i) => i !== index) : [...done, index];
-      const updated = { ...prev, [today]: nextIndices };
-      localStorage.setItem(LB_LOG_KEY, JSON.stringify(updated));
-      return updated;
-    });
-    // Upsert — date is primary key so this updates if row exists
-    await supabase
+    const currentDone = lowerBackLog[today] || [];
+    const nextIndices = currentDone.includes(index)
+      ? currentDone.filter((i) => i !== index)
+      : [...currentDone, index];
+    const updated = { ...lowerBackLog, [today]: nextIndices };
+    setLowerBackLog(updated);
+    localStorage.setItem(LB_LOG_KEY, JSON.stringify(updated));
+    const { error } = await supabase
       .from("lower_back_log")
-      .upsert({ date: today, completed_indices: nextIndices ?? [] });
+      .upsert({ date: today, completed_indices: nextIndices });
+    if (error) console.error("LB sync failed:", error.message);
   };
 
-  const toggleAbsExercise = (sessionKey, index) => {
-    setAbsLog((prev) => {
-      const done = prev[sessionKey] || [];
-      const next = done.includes(index) ? done.filter((i) => i !== index) : [...done, index];
-      const updated = { ...prev, [sessionKey]: next };
-      localStorage.setItem(ABS_LOG_KEY, JSON.stringify(updated));
-      return updated;
-    });
+  const toggleAbsExercise = async (sessionKey, index) => {
+    const currentDone = absLog[sessionKey] || [];
+    const nextIndices = currentDone.includes(index)
+      ? currentDone.filter((i) => i !== index)
+      : [...currentDone, index];
+    const updated = { ...absLog, [sessionKey]: nextIndices };
+    setAbsLog(updated);
+    localStorage.setItem(ABS_LOG_KEY, JSON.stringify(updated));
+    const { error } = await supabase
+      .from("abs_log")
+      .upsert({ session_key: sessionKey, completed_indices: nextIndices });
+    if (error) console.error("Abs sync failed:", error.message);
   };
 
-  const advanceAbsWeek = () => {
+  const advanceAbsWeek = async () => {
     const next = Math.min(absWeek + 1, 4);
     setAbsWeek(next);
     localStorage.setItem(ABS_WEEK_KEY, JSON.stringify(next));
+    const { error } = await supabase
+      .from("user_settings")
+      .upsert({ key: "abs_week", value: String(next) });
+    if (error) console.error("Abs week sync failed:", error.message);
   };
 
   const generateSessionInsight = async (log) => {
@@ -812,6 +840,54 @@ export default function WorkoutMemoryDashboard() {
     } finally {
       setLoadingInsightId(null);
     }
+  };
+
+  const forceSyncToSupabase = async () => {
+    setForceSyncing(true);
+    setForceSyncMsg("");
+    const errors = [];
+
+    // Workout logs
+    if (logs.length > 0) {
+      const { error } = await supabase.from("workout_logs").upsert(logs, { onConflict: "id" });
+      if (error) errors.push(`Workout logs: ${error.message}`);
+    }
+
+    // Lower back log
+    const lbEntries = Object.entries(lowerBackLog).map(([date, completed_indices]) => ({ date, completed_indices }));
+    if (lbEntries.length > 0) {
+      const { error } = await supabase.from("lower_back_log").upsert(lbEntries);
+      if (error) errors.push(`Lower back: ${error.message}`);
+    }
+
+    // Abs log
+    const absEntries = Object.entries(absLog).map(([session_key, completed_indices]) => ({ session_key, completed_indices }));
+    if (absEntries.length > 0) {
+      const { error } = await supabase.from("abs_log").upsert(absEntries);
+      if (error) errors.push(`Abs log: ${error.message}`);
+    }
+
+    // Abs week
+    const { error: weekError } = await supabase
+      .from("user_settings")
+      .upsert({ key: "abs_week", value: String(absWeek) });
+    if (weekError) errors.push(`Abs week: ${weekError.message}`);
+
+    // Cardio sessions
+    if (cardioLog.length > 0) {
+      const entries = cardioLog.map((s) => ({
+        id: s.id, date: s.date, drill_id: s.drillId,
+        name: s.name, xp: s.xp, notes: s.notes,
+      }));
+      const { error } = await supabase.from("cardio_sessions").upsert(entries, { onConflict: "id" });
+      if (error) errors.push(`Cardio: ${error.message}`);
+    }
+
+    setForceSyncMsg(errors.length === 0
+      ? "✓ All data synced to Supabase."
+      : `Synced with errors — ${errors.join(" | ")}`
+    );
+    setForceSyncing(false);
   };
 
   const logCardioSession = async (drill, notes = "") => {
@@ -866,6 +942,23 @@ export default function WorkoutMemoryDashboard() {
           <div className="flex items-center gap-2 rounded-2xl bg-zinc-100 px-4 py-2 text-sm text-zinc-500">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             Syncing with database…
+          </div>
+        )}
+        {/* Force sync bar */}
+        {!syncing && (
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-2">
+            <span className={`text-xs ${forceSyncMsg.startsWith("✓") ? "text-green-600" : forceSyncMsg ? "text-red-600" : "text-zinc-400"}`}>
+              {forceSyncMsg || "Auto-sync active — use Force Sync if data seems out of date."}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={forceSyncToSupabase}
+              disabled={forceSyncing}
+              className="shrink-0 rounded-xl h-7 px-3 text-xs"
+            >
+              {forceSyncing ? <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" />Syncing…</> : "Force Sync"}
+            </Button>
           </div>
         )}
         {syncError && (
