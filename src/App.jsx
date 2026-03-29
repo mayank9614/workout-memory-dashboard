@@ -269,6 +269,7 @@ const LB_LOG_KEY = "wmd_lb_log";
 const CARDIO_LOG_KEY = "wmd_cardio_log";
 const ABS_LOG_KEY = "wmd_abs_log";
 const ABS_WEEK_KEY = "wmd_abs_week";
+const SESSION_INSIGHTS_KEY = "wmd_session_insights";
 
 function loadFromStorage(key, fallback) {
   try {
@@ -481,6 +482,60 @@ Rules: Keep strings concise (1-2 sentences). plateau_alerts and strength_gains m
   return JSON.parse(clean);
 }
 
+// ── Per-session insight ─────────────────────────────────────────────────────
+async function fetchSessionInsight(log) {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (!apiKey) throw new Error("VITE_GEMINI_API_KEY is not set.");
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.0-flash",
+    systemInstruction: "You are a certified strength coach. Analyse a single workout session and give sharp, data-backed feedback. Be specific — reference actual exercises, weights, and reps from the data. Keep every string under 2 sentences.",
+  });
+
+  // Compute session stats
+  const tonnage = Math.round(log.exercises.reduce((s, ex) => s + parseExerciseTonnage(ex), 0));
+  const totalSets = log.exercises.reduce((s, ex) => s + (ex.sets ? ex.sets.length : 1), 0);
+  const topLift = log.exercises.reduce((best, ex) => {
+    const v = parseExerciseE1RM(ex);
+    return v > best.val ? { name: ex.name, val: v } : best;
+  }, { name: "", val: 0 });
+
+  const exerciseSummary = log.exercises.map((ex) => {
+    const setsStr = ex.sets
+      ? ex.sets.map((s, i) => `Set ${i + 1}: ${s.reps || "?"}r @ ${s.weight || "?"}kg`).join(", ")
+      : `${ex.setsReps} @ ${ex.weight}`;
+    const e1rm = parseExerciseE1RM(ex);
+    return `- ${ex.name}: ${setsStr}${e1rm > 0 ? ` (est. 1RM: ${Math.round(e1rm)}kg)` : ""}${ex.notes ? ` | ${ex.notes}` : ""}`;
+  }).join("\n");
+
+  const prompt = `<session>
+  Date: ${log.date} | Type: ${log.workout} | Title: ${log.title}
+  Energy: ${log.energy || "N/A"} | Pump: ${log.pump || "N/A"} | Pain/Injury: ${log.pain || "None"}
+  Session notes: ${log.notes || "none"}
+  Total tonnage: ${tonnage} kg | Total sets: ${totalSets}
+  Top estimated 1RM: ${topLift.name || "N/A"}${topLift.val > 0 ? ` @ ${Math.round(topLift.val)} kg` : ""}
+
+  Exercises:
+${exerciseSummary}
+</session>
+
+Respond ONLY with a JSON object (no markdown fences):
+{
+  "headline": "A punchy 1-line session summary (e.g. 'Solid push day — 3,200 kg volume, bench PR incoming')",
+  "total_tonnage": ${tonnage},
+  "top_lift": "Exercise name + est. 1RM (e.g. 'Bench Press — ~95 kg')",
+  "what_went_well": ["string", "string"],
+  "improve_next": ["string", "string"],
+  "next_session_tip": "One specific action focus for the NEXT time this workout type comes up"
+}`;
+
+  const result = await model.generateContent(prompt);
+  const text = result.response.text().trim();
+  const clean = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  return JSON.parse(clean);
+}
+
 // ── Main component ─────────────────────────────────────────────────────────
 export default function WorkoutMemoryDashboard() {
   const [logs, setLogs] = useState(() => loadFromStorage(LOGS_KEY, []));
@@ -507,6 +562,8 @@ export default function WorkoutMemoryDashboard() {
   const [cardioLog, setCardioLog] = useState(() => loadFromStorage(CARDIO_LOG_KEY, []));
   const [absLog, setAbsLog] = useState(() => loadFromStorage(ABS_LOG_KEY, {})); // { "date_weekIdx_sessionIdx": [completedExerciseIndices] }
   const [absWeek, setAbsWeek] = useState(() => loadFromStorage(ABS_WEEK_KEY, 1));
+  const [sessionInsights, setSessionInsights] = useState(() => loadFromStorage(SESSION_INSIGHTS_KEY, {}));
+  const [loadingInsightId, setLoadingInsightId] = useState(null);
 
   // Load all data from Supabase on mount
   useEffect(() => {
@@ -739,6 +796,22 @@ export default function WorkoutMemoryDashboard() {
     const next = Math.min(absWeek + 1, 4);
     setAbsWeek(next);
     localStorage.setItem(ABS_WEEK_KEY, JSON.stringify(next));
+  };
+
+  const generateSessionInsight = async (log) => {
+    setLoadingInsightId(log.id);
+    try {
+      const insight = await fetchSessionInsight(log);
+      setSessionInsights((prev) => {
+        const updated = { ...prev, [log.id]: insight };
+        localStorage.setItem(SESSION_INSIGHTS_KEY, JSON.stringify(updated));
+        return updated;
+      });
+    } catch (err) {
+      console.error("Session insight failed:", err.message);
+    } finally {
+      setLoadingInsightId(null);
+    }
   };
 
   const logCardioSession = async (drill, notes = "") => {
@@ -1031,7 +1104,7 @@ export default function WorkoutMemoryDashboard() {
                   ))}
                 </CardContent>
               </Card>
-              <SessionDetail log={selectedLog} />
+              <SessionDetail log={selectedLog} insight={sessionInsights[selectedLog?.id]} loadingInsight={loadingInsightId === selectedLog?.id} onGenerateInsight={generateSessionInsight} />
             </div>
           </TabsContent>
 
@@ -1234,7 +1307,7 @@ function StatCard({ icon, label, value }) {
   );
 }
 
-function SessionDetail({ log }) {
+function SessionDetail({ log, insight, loadingInsight, onGenerateInsight }) {
   if (!log) return (
     <Card className="rounded-3xl border-zinc-200">
       <CardContent className="flex items-center justify-center py-16 text-sm text-zinc-400">
@@ -1242,6 +1315,14 @@ function SessionDetail({ log }) {
       </CardContent>
     </Card>
   );
+
+  // Compute session stats
+  const tonnage = Math.round(log.exercises.reduce((s, ex) => s + parseExerciseTonnage(ex), 0));
+  const totalSets = log.exercises.reduce((s, ex) => s + (ex.sets ? ex.sets.length : 1), 0);
+  const topLift = log.exercises.reduce((best, ex) => {
+    const v = parseExerciseE1RM(ex);
+    return v > best.val ? { name: ex.name, val: Math.round(v) } : best;
+  }, { name: "", val: 0 });
 
   return (
     <Card className="rounded-3xl border-zinc-200">
@@ -1251,10 +1332,86 @@ function SessionDetail({ log }) {
             <CardTitle className="text-xl">{log.title}</CardTitle>
             <p className="mt-1 text-sm text-zinc-500">{log.date}</p>
           </div>
-          <Badge variant="outline">{log.workout}</Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline">{log.workout}</Badge>
+            <Button
+              size="sm"
+              variant={insight ? "outline" : "default"}
+              onClick={() => onGenerateInsight(log)}
+              disabled={loadingInsight}
+              className="rounded-xl h-8 px-3 text-xs"
+            >
+              {loadingInsight ? (
+                <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" />Analyzing…</>
+              ) : insight ? (
+                <><Sparkles className="mr-1.5 h-3 w-3" />Refresh Insight</>
+              ) : (
+                <><Sparkles className="mr-1.5 h-3 w-3" />AI Insight</>
+              )}
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
+
+        {/* Stats bar */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-2xl bg-zinc-900 text-white p-3 text-center">
+            <div className="text-xs text-zinc-400 uppercase tracking-wide">Volume</div>
+            <div className="mt-1 text-lg font-bold">{tonnage > 0 ? `${tonnage.toLocaleString()} kg` : "—"}</div>
+          </div>
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-center">
+            <div className="text-xs text-zinc-500 uppercase tracking-wide">Sets</div>
+            <div className="mt-1 text-lg font-bold text-zinc-800">{totalSets}</div>
+          </div>
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-center">
+            <div className="text-xs text-zinc-500 uppercase tracking-wide">Top e1RM</div>
+            <div className="mt-1 text-sm font-bold text-zinc-800 leading-tight">{topLift.val > 0 ? `${topLift.val} kg` : "—"}</div>
+          </div>
+        </div>
+
+        {/* AI Insight panel */}
+        {insight && (
+          <div className="rounded-2xl border border-zinc-900 bg-zinc-900 text-white p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-yellow-400 shrink-0" />
+              <p className="text-sm font-semibold">{insight.headline}</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {insight.what_went_well?.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1.5">What went well</p>
+                  <ul className="space-y-1">
+                    {insight.what_went_well.map((w, i) => (
+                      <li key={i} className="flex gap-2 text-xs text-zinc-300">
+                        <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-green-400" />{w}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {insight.improve_next?.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1.5">Improve next time</p>
+                  <ul className="space-y-1">
+                    {insight.improve_next.map((w, i) => (
+                      <li key={i} className="flex gap-2 text-xs text-zinc-300">
+                        <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-yellow-400" />{w}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+            {insight.next_session_tip && (
+              <div className="border-t border-zinc-700 pt-3">
+                <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">Next session focus</p>
+                <p className="text-xs text-zinc-200">{insight.next_session_tip}</p>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="grid gap-3 grid-cols-3">
           <InfoBox label="Energy" value={log.energy || "—"} />
           <InfoBox label="Pump" value={log.pump || "—"} />
@@ -1264,30 +1421,32 @@ function SessionDetail({ log }) {
         <div>
           <h3 className="mb-3 text-sm font-semibold">Exercises</h3>
           <div className="space-y-3">
-            {log.exercises.map((exercise, index) => (
-              <div key={index} className="rounded-2xl border border-zinc-200 p-4">
-                <div className="font-medium">{exercise.name}</div>
-                {/* New per-set format */}
-                {exercise.sets ? (
-                  <div className="mt-2 space-y-1">
-                    {exercise.sets.map((set, si) => (
-                      <div key={si} className="flex items-center gap-3 text-sm text-zinc-600">
-                        <span className="w-10 shrink-0 text-xs text-zinc-400">Set {si + 1}</span>
-                        <span className="font-medium">{set.reps || "—"} reps</span>
-                        <span className="text-zinc-400">@</span>
-                        <span className="font-medium">{set.weight || "—"}</span>
-                      </div>
-                    ))}
+            {log.exercises.map((exercise, index) => {
+              const e1rm = parseExerciseE1RM(exercise);
+              return (
+                <div key={index} className="rounded-2xl border border-zinc-200 p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-medium">{exercise.name}</div>
+                    {e1rm > 0 && <span className="text-xs text-zinc-400 shrink-0">e1RM ~{Math.round(e1rm)} kg</span>}
                   </div>
-                ) : (
-                  /* Legacy format */
-                  <div className="mt-1 text-sm text-zinc-600">
-                    {exercise.setsReps || "—"} • {exercise.weight || "—"}
-                  </div>
-                )}
-                {exercise.notes && <div className="mt-2 text-sm text-zinc-500">{exercise.notes}</div>}
-              </div>
-            ))}
+                  {exercise.sets ? (
+                    <div className="mt-2 space-y-1">
+                      {exercise.sets.map((set, si) => (
+                        <div key={si} className="flex items-center gap-3 text-sm text-zinc-600">
+                          <span className="w-10 shrink-0 text-xs text-zinc-400">Set {si + 1}</span>
+                          <span className="font-medium">{set.reps || "—"} reps</span>
+                          <span className="text-zinc-400">@</span>
+                          <span className="font-medium">{set.weight || "—"}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-1 text-sm text-zinc-600">{exercise.setsReps || "—"} • {exercise.weight || "—"}</div>
+                  )}
+                  {exercise.notes && <div className="mt-2 text-sm text-zinc-500">{exercise.notes}</div>}
+                </div>
+              );
+            })}
           </div>
         </div>
 
