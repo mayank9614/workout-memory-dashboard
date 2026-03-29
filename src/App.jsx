@@ -199,10 +199,76 @@ const CARDIO_DRILLS = [
   { id: "yoga_flex", name: "Yoga / Flexibility", xp: 20, emoji: "🧘", desc: "Lower back focused yoga & mobility flow" },
 ];
 
+// ── 4-week Abs Starter Program ──────────────────────────────────────────────
+const ABS_PROGRAM = [
+  {
+    week: 1, name: "Foundation",
+    sessions: [
+      { label: "Session A (end of Push day)", exercises: [
+        { name: "Modified Curl-Up", prescription: "1 pyramid: 5→3→1 reps", tip: "8s hold each rep, keep natural lumbar curve" },
+        { name: "Dead Bug (arms only)", prescription: "2 × 6 each side", tip: "Lower one arm overhead, legs stay in tabletop" },
+        { name: "Glute Bridge", prescription: "2 × 10 reps", tip: "2s squeeze at top — targets the glutes driving lower back pain" },
+      ]},
+      { label: "Session B (end of Legs day)", exercises: [
+        { name: "Bird Dog", prescription: "1 pyramid: 5→3→1 each side", tip: "8s hold, hips perfectly level" },
+        { name: "Side Plank (knee-down)", prescription: "2 × 5 each side", tip: "5s hold per rep — knee-down is the safe regression" },
+        { name: "Cat-Cow", prescription: "2 × 10 slow reps", tip: "Coordinate breath — warm-down for the spine" },
+      ]},
+    ],
+  },
+  {
+    week: 2, name: "Stabilization",
+    sessions: [
+      { label: "Session A (end of Push day)", exercises: [
+        { name: "Modified Curl-Up", prescription: "2 pyramids: 5→3→1 reps", tip: "8s hold, move to full version if pain-free" },
+        { name: "Dead Bug (full)", prescription: "2 × 8 each side", tip: "Opposite arm + leg simultaneously, 3s pause" },
+        { name: "Glute Bridge", prescription: "3 × 12 reps", tip: "2s hold — add band around knees for more glute activation" },
+      ]},
+      { label: "Session B (end of Legs day)", exercises: [
+        { name: "Bird Dog", prescription: "2 pyramids: 5→3→1 each side", tip: "8s hold, focus on not letting the hip rotate" },
+        { name: "Side Plank (knee-down)", prescription: "2 × 5 each side", tip: "8s hold per rep — increase from 5s last week" },
+        { name: "Single-Leg Glute Bridge", prescription: "2 × 10 each side", tip: "Extend one leg, keep hips level" },
+      ]},
+    ],
+  },
+  {
+    week: 3, name: "Loading",
+    sessions: [
+      { label: "Session A (end of Push day)", exercises: [
+        { name: "Modified Curl-Up", prescription: "3 pyramids: 5→3→1 reps", tip: "10s hold each rep — added time under tension" },
+        { name: "Dead Bug", prescription: "3 × 8 each side", tip: "4s pause at bottom — slow the eccentric" },
+        { name: "Glute Bridge", prescription: "3 × 15 reps", tip: "Or add single-leg if bilateral is easy" },
+      ]},
+      { label: "Session B (end of Legs day)", exercises: [
+        { name: "Bird Dog with 3s pause", prescription: "3 pyramids: 5→3→1 each side", tip: "10s hold, squeeze glute at top of each rep" },
+        { name: "Side Plank (attempt full)", prescription: "3 × 5 each side", tip: "8-10s hold — try feet-stacked if knee version is easy" },
+        { name: "Single-Leg Glute Bridge", prescription: "3 × 12 each side", tip: "Controlled lowering phase" },
+      ]},
+    ],
+  },
+  {
+    week: 4, name: "Consolidation",
+    sessions: [
+      { label: "Session A (end of Push day)", exercises: [
+        { name: "Modified Curl-Up", prescription: "3 pyramids: 6→4→2 reps", tip: "10s hold — expanded pyramid vs Week 3" },
+        { name: "Dead Bug", prescription: "3 × 10 each side", tip: "4s pause — consider light ankle weight if ready" },
+        { name: "Hip Thrust (bodyweight)", prescription: "3 × 12 reps", tip: "Full hip extension — prepare for barbell version" },
+      ]},
+      { label: "Session B (end of Legs day)", exercises: [
+        { name: "Bird Dog with 3s pause", prescription: "3 pyramids: 6→4→2 each side", tip: "10s hold" },
+        { name: "Side Plank (full)", prescription: "3 × 5 each side", tip: "10s hold — add hip dip if stable" },
+        { name: "Pallof Press / Isometric Hold", prescription: "3 × 10 each side", tip: "Anti-rotation — resist twist, hips square" },
+      ]},
+    ],
+  },
+];
+
 const LOGS_KEY = "wmd_logs";
 const RECS_KEY = "wmd_recommendations";
 const LB_LOG_KEY = "wmd_lb_log";
 const CARDIO_LOG_KEY = "wmd_cardio_log";
+const ABS_LOG_KEY = "wmd_abs_log";
+const ABS_WEEK_KEY = "wmd_abs_week";
 
 function loadFromStorage(key, fallback) {
   try {
@@ -225,71 +291,192 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// ── Workout metrics computation ─────────────────────────────────────────────
+function parseExerciseTonnage(ex) {
+  try {
+    if (ex.sets && Array.isArray(ex.sets)) {
+      return ex.sets.reduce((s, set) => s + (parseFloat(set.reps) || 0) * (parseFloat(set.weight) || 0), 0);
+    }
+    if (ex.setsReps && ex.weight) {
+      const m = ex.setsReps.match(/(\d+)[×xX](\d+)/);
+      const w = ex.weight.match(/[\d.]+/);
+      if (m && w) return parseInt(m[1]) * parseInt(m[2]) * parseFloat(w[0]);
+    }
+  } catch (_) {}
+  return 0;
+}
+
+function parseExerciseE1RM(ex) {
+  // Epley formula: w × (1 + reps/30)
+  try {
+    if (ex.sets && Array.isArray(ex.sets)) {
+      return ex.sets.reduce((best, s) => {
+        const r = parseFloat(s.reps) || 0, w = parseFloat(s.weight) || 0;
+        if (!r || !w) return best;
+        return Math.max(best, w * (1 + r / 30));
+      }, 0);
+    }
+    if (ex.setsReps && ex.weight) {
+      const m = ex.setsReps.match(/(\d+)[×xX](\d+)/);
+      const w = ex.weight.match(/[\d.]+/);
+      if (m && w) return parseFloat(w[0]) * (1 + parseInt(m[2]) / 30);
+    }
+  } catch (_) {}
+  return 0;
+}
+
+function computeWorkoutMetrics(logs) {
+  if (!logs || logs.length === 0) return null;
+
+  // Per-session tonnage
+  const sessionTonnages = logs.map((log) => ({
+    date: log.date, type: log.workout,
+    tonnage: Math.round(log.exercises.reduce((s, ex) => s + parseExerciseTonnage(ex), 0)),
+  }));
+
+  // Best e1RM per exercise (most recent value)
+  const e1RMMap = {};
+  [...logs].reverse().forEach((log) => {
+    log.exercises.forEach((ex) => {
+      const v = parseExerciseE1RM(ex);
+      if (v > 0) e1RMMap[ex.name] = Math.round(v);
+    });
+  });
+
+  // Plateau detection: same exercise in last 3 sessions of same type, e1RM variance < 2 kg
+  const plateauExercises = [];
+  ["Push", "Pull", "Legs"].forEach((type) => {
+    const typeLogs = logs.filter((l) => l.workout === type).slice(0, 3);
+    if (typeLogs.length < 2) return;
+    const exNames = [...new Set(typeLogs.flatMap((l) => l.exercises.map((e) => e.name)))];
+    exNames.forEach((name) => {
+      const vals = typeLogs.map((l) => {
+        const ex = l.exercises.find((e) => e.name === name);
+        return ex ? parseExerciseE1RM(ex) : null;
+      }).filter((v) => v !== null && v > 0);
+      if (vals.length >= 2 && Math.max(...vals) - Math.min(...vals) < 2) {
+        plateauExercises.push(name);
+      }
+    });
+  });
+
+  // Push:Pull tonnage balance
+  const pushTon = sessionTonnages.filter((s) => s.type === "Push").reduce((a, s) => a + s.tonnage, 0);
+  const pullTon = sessionTonnages.filter((s) => s.type === "Pull").reduce((a, s) => a + s.tonnage, 0);
+  const pushPullRatio = pullTon > 0 ? (pushTon / pullTon).toFixed(2) : "N/A";
+
+  // Unique training weeks
+  const weekCount = new Set(logs.map((l) => {
+    const d = new Date(l.date);
+    return Math.floor(d.getTime() / (7 * 24 * 60 * 60 * 1000));
+  })).size;
+
+  const recentTonnages = sessionTonnages.slice(0, 5).map((s) => s.tonnage);
+  const avgTonnage = recentTonnages.length ? Math.round(recentTonnages.reduce((a, b) => a + b, 0) / recentTonnages.length) : 0;
+  const painSessions = logs.filter((l) => l.pain && l.pain !== "" && l.pain.toLowerCase() !== "none").length;
+
+  return {
+    totalSessions: logs.length,
+    weekCount,
+    avgTonnage,
+    recentTonnages,
+    estimatedE1RMs: e1RMMap,
+    plateauExercises: [...new Set(plateauExercises)],
+    pushPullRatio,
+    pushSessions: logs.filter((l) => l.workout === "Push").length,
+    pullSessions: logs.filter((l) => l.workout === "Pull").length,
+    legSessions: logs.filter((l) => l.workout === "Legs").length,
+    painSessions,
+  };
+}
+
 // ── Gemini helper ──────────────────────────────────────────────────────────
-async function fetchGeminiRecommendations(logs) {
+async function fetchGeminiRecommendations(logs, metrics) {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
   if (!apiKey) throw new Error("VITE_GEMINI_API_KEY is not set. Add it to your .env file.");
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.0-flash",
+    systemInstruction: `You are a certified strength and conditioning coach with expertise in PPL programming, injury prevention, and beginner progression. Always prioritize safety. Give specific numbers (sets, reps, weights) not vague advice. Flag overtraining or injury risk immediately.`,
+  });
 
-  const logsText = logs
-    .map(
-      (log) =>
-        `Date: ${log.date} | Type: ${log.workout} | Title: ${log.title}
-Energy: ${log.energy || "N/A"} | Pump: ${log.pump || "N/A"} | Pain: ${log.pain || "N/A"}
-Notes: ${log.notes}
-Exercises:\n${log.exercises.map((e) => {
-        const setsStr = e.sets
-          ? e.sets.map((s, i) => `Set ${i + 1}: ${s.reps || "?"}reps @ ${s.weight || "?"}kg`).join(", ")
-          : `${e.setsReps} @ ${e.weight}`;
-        return `  - ${e.name}: ${setsStr}${e.notes ? ` (${e.notes})` : ""}`;
-      }).join("\n")}`
-    )
-    .join("\n\n---\n\n");
+  const logsText = logs.slice(0, 10).map((log) =>
+    `Date: ${log.date} | Type: ${log.workout} | Energy: ${log.energy || "N/A"} | Pain: ${log.pain || "N/A"}
+Notes: ${log.notes || "none"}
+Exercises: ${log.exercises.map((e) => {
+      const setsStr = e.sets
+        ? e.sets.map((s, i) => `Set ${i + 1}: ${s.reps || "?"}r @ ${s.weight || "?"}kg`).join(", ")
+        : `${e.setsReps} @ ${e.weight}`;
+      return `${e.name}: ${setsStr}`;
+    }).join(" | ")}`
+  ).join("\n\n---\n\n");
 
-  const prompt = `You are an expert strength and conditioning coach. Analyze the following PPL (Push/Pull/Legs) workout logs and provide a structured coaching report with exercise variations to prevent plateaus and add stimulus variety.
+  const metricsText = metrics ? `
+<computed_metrics>
+  total_sessions: ${metrics.totalSessions}
+  training_weeks: ${metrics.weekCount}
+  avg_session_tonnage_kg: ${metrics.avgTonnage}
+  recent_5_session_tonnages_kg: [${metrics.recentTonnages.join(", ")}]
+  push_pull_tonnage_ratio: ${metrics.pushPullRatio} (ideal is ~1.0; >1.2 means overdoing push vs pull)
+  sessions_with_pain_noted: ${metrics.painSessions}
+  plateau_candidate_exercises: [${metrics.plateauExercises.join(", ") || "none detected"}]
+  estimated_e1rms_kg: ${JSON.stringify(metrics.estimatedE1RMs)}
+</computed_metrics>` : "";
 
+  const prompt = `<user_context>
+  Training split: Push / Pull / Legs (PPL)
+  Known issue: Lower back pain — exercises must respect lumbar health
+  Sport: Cricket player — needs fielding stamina and rotational power
+  Goal: Hypertrophy + athletic performance
+  Abs status: Has NOT been doing direct abs work — beginner level, needs safe introduction
+</user_context>
+${metricsText}
+
+<recent_sessions>
 ${logsText}
+</recent_sessions>
 
-Respond ONLY with a JSON object (no markdown fences) in this exact shape:
+Analyze this athlete's data and respond ONLY with a JSON object (no markdown fences) in this exact shape:
 {
-  "observations": ["string", ...],
+  "observations": ["2-3 high-level performance observations based on actual data"],
+  "tonnage_insight": "One sentence on volume trend — is it increasing, flat, or concerning?",
+  "deload_signal": { "needed": false, "reason": "string — explain why or why not" },
+  "plateau_alerts": [
+    { "exercise": "name", "recommendation": "specific next-step to break plateau" }
+  ],
+  "strength_gains": [
+    { "exercise": "name", "observation": "positive trend noted" }
+  ],
+  "abs_integration": {
+    "schedule": "Which PPL days to add abs and why (e.g. end of Push + end of Legs)",
+    "starter_exercises": ["Exercise 1 with sets/reps", "Exercise 2 with sets/reps", "Exercise 3 with sets/reps"],
+    "key_tip": "Most important cue for someone with lower back pain starting abs"
+  },
   "push": {
-    "title": "Next Push Session",
+    "title": "Next Push Session title",
     "focus": "string",
-    "actions": ["string", ...],
-    "variations": [
-      { "swap": "Current exercise name", "with": "Alternative exercise", "reason": "Why this swap adds value" }
-    ]
+    "actions": ["specific action 1", "specific action 2"],
+    "variations": [{ "swap": "current exercise", "with": "alternative", "reason": "why" }]
   },
   "pull": {
-    "title": "Next Pull Session",
+    "title": "Next Pull Session title",
     "focus": "string",
-    "actions": ["string", ...],
-    "variations": [
-      { "swap": "Current exercise name", "with": "Alternative exercise", "reason": "Why this swap adds value" }
-    ]
+    "actions": ["specific action 1", "specific action 2"],
+    "variations": [{ "swap": "current exercise", "with": "alternative", "reason": "why" }]
   },
   "legs": {
-    "title": "Next Legs Session",
+    "title": "Next Legs Session title",
     "focus": "string",
-    "actions": ["string", ...],
-    "variations": [
-      { "swap": "Current exercise name", "with": "Alternative exercise", "reason": "Why this swap adds value" }
-    ]
+    "actions": ["specific action 1", "specific action 2"],
+    "variations": [{ "swap": "current exercise", "with": "alternative", "reason": "why" }]
   },
-  "warnings": ["string", ...]
+  "warnings": ["string — injury or recovery concern, or empty array"]
 }
-Rules:
-- Keep each string concise (1-2 sentences).
-- Provide 2-3 variations per session based on what the user has been doing repeatedly.
-- Variations should target the same muscle group but with different angles, equipment, or rep schemes.
-- "warnings" may be an empty array if there are no injury/overtraining concerns.`;
+Rules: Keep strings concise (1-2 sentences). plateau_alerts and strength_gains may be empty arrays. abs_integration.starter_exercises should be 3 beginner-safe exercises.`;
 
   const result = await model.generateContent(prompt);
   const text = result.response.text().trim();
-  // Strip markdown code fences if present
   const clean = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
   return JSON.parse(clean);
 }
@@ -318,6 +505,8 @@ export default function WorkoutMemoryDashboard() {
   const [aiError, setAiError] = useState("");
   const [lowerBackLog, setLowerBackLog] = useState(() => loadFromStorage(LB_LOG_KEY, {}));
   const [cardioLog, setCardioLog] = useState(() => loadFromStorage(CARDIO_LOG_KEY, []));
+  const [absLog, setAbsLog] = useState(() => loadFromStorage(ABS_LOG_KEY, {})); // { "date_weekIdx_sessionIdx": [completedExerciseIndices] }
+  const [absWeek, setAbsWeek] = useState(() => loadFromStorage(ABS_WEEK_KEY, 1));
 
   // Load all data from Supabase on mount
   useEffect(() => {
@@ -408,6 +597,8 @@ export default function WorkoutMemoryDashboard() {
     const cycle = { Push: "Pull", Pull: "Legs", Legs: "Push" };
     return cycle[logs[0].workout] || "Push";
   }, [logs]);
+
+  const liveMetrics = useMemo(() => computeWorkoutMetrics(logs), [logs]);
 
   const startSuggestedSession = () => {
     setForm({
@@ -534,6 +725,22 @@ export default function WorkoutMemoryDashboard() {
       .upsert({ date: today, completed_indices: nextIndices ?? [] });
   };
 
+  const toggleAbsExercise = (sessionKey, index) => {
+    setAbsLog((prev) => {
+      const done = prev[sessionKey] || [];
+      const next = done.includes(index) ? done.filter((i) => i !== index) : [...done, index];
+      const updated = { ...prev, [sessionKey]: next };
+      localStorage.setItem(ABS_LOG_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const advanceAbsWeek = () => {
+    const next = Math.min(absWeek + 1, 4);
+    setAbsWeek(next);
+    localStorage.setItem(ABS_WEEK_KEY, JSON.stringify(next));
+  };
+
   const logCardioSession = async (drill, notes = "") => {
     const entry = { id: Date.now(), date: todayStr(), drillId: drill.id, name: drill.name, xp: drill.xp, notes };
     setCardioLog((prev) => {
@@ -567,7 +774,8 @@ export default function WorkoutMemoryDashboard() {
     setLoadingAI(true);
     setAiError("");
     try {
-      const data = await fetchGeminiRecommendations(logs);
+      const metrics = computeWorkoutMetrics(logs);
+      const data = await fetchGeminiRecommendations(logs, metrics);
       setRecommendations(data);
     } catch (err) {
       setAiError(err.message || "Failed to get recommendations.");
@@ -838,16 +1046,35 @@ export default function WorkoutMemoryDashboard() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold">AI Coaching Insights</h2>
-                  <p className="text-sm text-zinc-500">Powered by Gemini — analyzes your last {logs.length} session{logs.length !== 1 ? "s" : ""}.</p>
+                  <p className="text-sm text-zinc-500">Gemini analyzes tonnage, e1RM trends, plateaus & more across your {logs.length} session{logs.length !== 1 ? "s" : ""}.</p>
                 </div>
                 <Button onClick={handleGetRecommendations} disabled={loadingAI || logs.length === 0} className="w-full rounded-2xl px-5 sm:w-auto">
                   {loadingAI ? (
                     <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analyzing…</>
                   ) : (
-                    <><Sparkles className="mr-2 h-4 w-4" />{recommendations ? "Refresh" : "Get Recommendations"}</>
+                    <><Sparkles className="mr-2 h-4 w-4" />{recommendations ? "Refresh Insights" : "Get Insights"}</>
                   )}
                 </Button>
               </div>
+
+              {/* Live metrics bar — always visible */}
+              {liveMetrics && (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {[
+                    { label: "Sessions", value: liveMetrics.totalSessions },
+                    { label: "Weeks Training", value: liveMetrics.weekCount },
+                    { label: "Avg Tonnage", value: `${liveMetrics.avgTonnage} kg` },
+                    { label: "Push:Pull", value: liveMetrics.pushPullRatio },
+                  ].map((m) => (
+                    <Card key={m.label} className="rounded-2xl border-zinc-200">
+                      <CardContent className="p-3">
+                        <div className="text-xs text-zinc-500">{m.label}</div>
+                        <div className="mt-0.5 text-lg font-bold text-zinc-800">{m.value}</div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
 
               {aiError && (
                 <Card className="rounded-3xl border-red-200 bg-red-50">
@@ -859,47 +1086,109 @@ export default function WorkoutMemoryDashboard() {
                 <Card className="rounded-3xl border-zinc-200 border-dashed">
                   <CardContent className="flex flex-col items-center justify-center py-16 text-center">
                     <Sparkles className="mb-3 h-8 w-8 text-zinc-300" />
-                    <p className="text-sm text-zinc-500">Click "Get Recommendations" to analyze your workout history.</p>
+                    <p className="text-sm text-zinc-500">Hit "Get Insights" to analyze your training with computed tonnage, e1RM, and plateau signals.</p>
                   </CardContent>
                 </Card>
               )}
 
               {recommendations && (
                 <div className="grid gap-4 md:grid-cols-2">
-                  {/* Observations */}
+
+                  {/* Observations + Tonnage */}
                   <Card className="rounded-3xl border-zinc-200 md:col-span-2">
                     <CardHeader><CardTitle className="text-base">Performance Observations</CardTitle></CardHeader>
-                    <CardContent>
+                    <CardContent className="space-y-3">
                       <ul className="space-y-2">
                         {recommendations.observations?.map((obs, i) => (
                           <li key={i} className="flex gap-2 text-sm text-zinc-700">
-                            <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-400" />
-                            {obs}
+                            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-400" />{obs}
                           </li>
                         ))}
                       </ul>
+                      {recommendations.tonnage_insight && (
+                        <div className="mt-2 rounded-2xl bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm text-zinc-600">
+                          <span className="font-medium text-zinc-700">Volume trend: </span>{recommendations.tonnage_insight}
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
 
-                  {/* Push */}
+                  {/* Deload signal */}
+                  {recommendations.deload_signal?.needed && (
+                    <Card className="rounded-3xl border-orange-200 bg-orange-50 md:col-span-2">
+                      <CardHeader><CardTitle className="text-base text-orange-800">Deload Recommended</CardTitle></CardHeader>
+                      <CardContent className="text-sm text-orange-700">{recommendations.deload_signal.reason}</CardContent>
+                    </Card>
+                  )}
+
+                  {/* Plateau alerts */}
+                  {recommendations.plateau_alerts?.length > 0 && (
+                    <Card className="rounded-3xl border-yellow-200 bg-yellow-50">
+                      <CardHeader><CardTitle className="text-base text-yellow-800">Plateau Alerts</CardTitle></CardHeader>
+                      <CardContent>
+                        <ul className="space-y-2">
+                          {recommendations.plateau_alerts.map((p, i) => (
+                            <li key={i} className="text-sm text-yellow-800">
+                              <span className="font-medium">{p.exercise}:</span> {p.recommendation}
+                            </li>
+                          ))}
+                        </ul>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Strength gains */}
+                  {recommendations.strength_gains?.length > 0 && (
+                    <Card className="rounded-3xl border-green-200 bg-green-50">
+                      <CardHeader><CardTitle className="text-base text-green-800">Strength Gains</CardTitle></CardHeader>
+                      <CardContent>
+                        <ul className="space-y-2">
+                          {recommendations.strength_gains.map((g, i) => (
+                            <li key={i} className="text-sm text-green-800">
+                              <span className="font-medium">{g.exercise}:</span> {g.observation}
+                            </li>
+                          ))}
+                        </ul>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Abs integration */}
+                  {recommendations.abs_integration && (
+                    <Card className="rounded-3xl border-violet-200 bg-violet-50 md:col-span-2">
+                      <CardHeader><CardTitle className="text-base text-violet-800">Abs Integration Plan</CardTitle></CardHeader>
+                      <CardContent className="space-y-3">
+                        <p className="text-sm text-violet-700">{recommendations.abs_integration.schedule}</p>
+                        <ul className="space-y-1">
+                          {recommendations.abs_integration.starter_exercises?.map((ex, i) => (
+                            <li key={i} className="flex gap-2 text-sm text-violet-800">
+                              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" />{ex}
+                            </li>
+                          ))}
+                        </ul>
+                        {recommendations.abs_integration.key_tip && (
+                          <div className="rounded-2xl bg-violet-100 border border-violet-200 px-4 py-2 text-xs text-violet-700 italic">
+                            Tip: {recommendations.abs_integration.key_tip}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Push / Pull / Legs session plans */}
                   <SessionPlanCard data={recommendations.push} color="blue" />
-
-                  {/* Pull */}
                   <SessionPlanCard data={recommendations.pull} color="green" />
-
-                  {/* Legs */}
                   <SessionPlanCard data={recommendations.legs} color="purple" />
 
                   {/* Warnings */}
                   {recommendations.warnings?.length > 0 && (
-                    <Card className="rounded-3xl border-amber-200 bg-amber-50">
+                    <Card className="rounded-3xl border-amber-200 bg-amber-50 md:col-span-2">
                       <CardHeader><CardTitle className="text-base text-amber-800">Injury / Recovery Notes</CardTitle></CardHeader>
                       <CardContent>
                         <ul className="space-y-2">
                           {recommendations.warnings.map((w, i) => (
                             <li key={i} className="flex gap-2 text-sm text-amber-700">
-                              <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
-                              {w}
+                              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />{w}
                             </li>
                           ))}
                         </ul>
@@ -916,12 +1205,10 @@ export default function WorkoutMemoryDashboard() {
             <div className="space-y-6">
               <div>
                 <h2 className="text-lg font-semibold">Cricket Fit</h2>
-                <p className="text-sm text-zinc-500">Daily lower back rehab + gamified cardio to field a full innings.</p>
+                <p className="text-sm text-zinc-500">Lower back rehab + 4-week abs program + gamified gym cardio.</p>
               </div>
-              <LowerBackCard
-                lowerBackLog={lowerBackLog}
-                onToggle={toggleLowerBackExercise}
-              />
+              <LowerBackCard lowerBackLog={lowerBackLog} onToggle={toggleLowerBackExercise} />
+              <AbsProgramCard absWeek={absWeek} absLog={absLog} onToggle={toggleAbsExercise} onAdvanceWeek={advanceAbsWeek} />
               <CardioChallenge cardioLog={cardioLog} onLog={logCardioSession} />
             </div>
           </TabsContent>
@@ -1029,6 +1316,106 @@ const colorMap = {
   green: { border: "border-green-200", bg: "bg-green-50", title: "text-green-800", bullet: "bg-green-400", focus: "text-green-700" },
   purple: { border: "border-purple-200", bg: "bg-purple-50", title: "text-purple-800", bullet: "bg-purple-400", focus: "text-purple-700" },
 };
+
+// ── AbsProgramCard ──────────────────────────────────────────────────────────
+function AbsProgramCard({ absWeek, absLog, onToggle, onAdvanceWeek }) {
+  const weekData = ABS_PROGRAM[absWeek - 1];
+  const today = new Date().toISOString().slice(0, 10);
+
+  const sessionCompletion = weekData.sessions.map((session, sIdx) => {
+    const key = `${today}_w${absWeek}_s${sIdx}`;
+    const done = absLog[key] || [];
+    return { key, done, total: session.exercises.length, allDone: done.length === session.exercises.length };
+  });
+
+  const weekComplete = sessionCompletion.every((s) => s.allDone);
+
+  return (
+    <Card className="rounded-3xl border-violet-200 bg-violet-50">
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-base text-violet-800 flex items-center gap-2">
+              4-Week Abs Starter Program
+            </CardTitle>
+            <p className="text-sm text-violet-700 mt-0.5 font-medium">
+              Week {absWeek} of 4 — {weekData.name}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {/* Week progress dots */}
+            <div className="flex gap-1.5">
+              {[1, 2, 3, 4].map((w) => (
+                <div key={w} className={`h-2.5 w-2.5 rounded-full border ${
+                  w < absWeek ? "bg-violet-500 border-violet-500"
+                  : w === absWeek ? "bg-violet-300 border-violet-500"
+                  : "bg-white border-violet-200"
+                }`} />
+              ))}
+            </div>
+          </div>
+        </div>
+        <p className="text-xs text-violet-600 mt-1">Add these at the end of your Push and Legs sessions. Never before heavy compounds.</p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {weekData.sessions.map((session, sIdx) => {
+          const { key, done, allDone } = sessionCompletion[sIdx];
+          return (
+            <div key={sIdx} className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-violet-700">{session.label}</h4>
+                <span className="text-xs text-violet-500">{done.length}/{session.exercises.length}</span>
+              </div>
+              {allDone && (
+                <div className="rounded-xl bg-green-100 border border-green-200 p-2 text-xs text-green-700 text-center font-medium">
+                  Session complete!
+                </div>
+              )}
+              {session.exercises.map((ex, eIdx) => {
+                const isDone = done.includes(eIdx);
+                return (
+                  <button
+                    key={eIdx}
+                    onClick={() => onToggle(key, eIdx)}
+                    className={`w-full flex items-start gap-3 rounded-2xl border p-3 text-left transition ${
+                      isDone ? "border-green-300 bg-green-50" : "border-violet-200 bg-white hover:bg-violet-50"
+                    }`}
+                  >
+                    <div className={`mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 flex items-center justify-center ${
+                      isDone ? "border-green-500 bg-green-500" : "border-violet-300"
+                    }`}>
+                      {isDone && <span className="text-white text-xs font-bold">✓</span>}
+                    </div>
+                    <div className="flex-1">
+                      <div className={`text-sm font-medium ${isDone ? "line-through text-zinc-400" : "text-zinc-800"}`}>{ex.name}</div>
+                      <div className="text-xs text-zinc-500 mt-0.5">{ex.prescription}</div>
+                      <div className="text-xs text-zinc-400 mt-0.5 italic">{ex.tip}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })}
+
+        {weekComplete && absWeek < 4 && (
+          <div className="rounded-2xl bg-violet-100 border border-violet-300 p-4 text-center space-y-2">
+            <p className="text-sm font-semibold text-violet-800">Week {absWeek} sessions done!</p>
+            <p className="text-xs text-violet-600">Complete this week's sessions a few times before advancing.</p>
+            <Button onClick={onAdvanceWeek} size="sm" className="rounded-xl bg-violet-600 hover:bg-violet-700 text-white">
+              Advance to Week {absWeek + 1}
+            </Button>
+          </div>
+        )}
+        {absWeek === 4 && (
+          <div className="rounded-2xl bg-green-100 border border-green-200 p-3 text-sm text-green-700 text-center font-medium">
+            You've completed the 4-week program! Next: Hollow body holds, Pallof press, Ab wheel rollouts.
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 // ── LowerBackCard ───────────────────────────────────────────────────────────
 function LowerBackCard({ lowerBackLog, onToggle }) {
