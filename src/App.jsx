@@ -271,6 +271,7 @@ const ABS_LOG_KEY = "wmd_abs_log";
 const ABS_WEEK_KEY = "wmd_abs_week";
 const SESSION_INSIGHTS_KEY = "wmd_session_insights";
 const COACH_CHAT_KEY = "wmd_coach_chat";
+const ROUTINE_CUSTOMIZATIONS_KEY = "wmd_routine_customizations";
 
 const QUICK_PROMPTS = [
   "Lower back-safe alternative to bent-over barbell row",
@@ -580,6 +581,8 @@ export default function WorkoutMemoryDashboard() {
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const chatBottomRef = React.useRef(null);
+  const [routineCustomizations, setRoutineCustomizations] = useState(() => loadFromStorage(ROUTINE_CUSTOMIZATIONS_KEY, []));
+  const [addingToRoutine, setAddingToRoutine] = useState(null); // { messageId, workoutType, exerciseName, prescription, notes }
 
   // Load all data from Supabase on mount
   useEffect(() => {
@@ -660,6 +663,21 @@ export default function WorkoutMemoryDashboard() {
             localStorage.setItem(ABS_WEEK_KEY, JSON.stringify(week));
           }
         }
+      }
+
+      // Routine customizations
+      const { data: rcData, error: rcError } = await supabase
+        .from("routine_customizations")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (!rcError && rcData && rcData.length > 0) {
+        const mapped = rcData.map((r) => ({
+          id: r.id, createdAt: r.created_at, workoutType: r.workout_type,
+          exerciseName: r.exercise_name, prescription: r.prescription,
+          notes: r.notes, sourceMessage: r.source_message,
+        }));
+        setRoutineCustomizations(mapped);
+        localStorage.setItem(ROUTINE_CUSTOMIZATIONS_KEY, JSON.stringify(mapped));
       }
 
       setSyncing(false);
@@ -748,6 +766,42 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
   const clearCoachChat = () => {
     setCoachChat([]);
     localStorage.removeItem(COACH_CHAT_KEY);
+  };
+
+  const saveRoutineCustomization = async (form) => {
+    const entry = {
+      id: Date.now(),
+      createdAt: new Date().toISOString().slice(0, 10),
+      workoutType: form.workoutType,
+      exerciseName: form.exerciseName.trim(),
+      prescription: form.prescription.trim(),
+      notes: form.notes.trim(),
+      sourceMessage: form.sourceMessage,
+    };
+    const updated = [entry, ...routineCustomizations];
+    setRoutineCustomizations(updated);
+    localStorage.setItem(ROUTINE_CUSTOMIZATIONS_KEY, JSON.stringify(updated));
+    setAddingToRoutine(null);
+    const { error } = await supabase.from("routine_customizations").insert({
+      id: entry.id, created_at: entry.createdAt, workout_type: entry.workoutType,
+      exercise_name: entry.exerciseName, prescription: entry.prescription,
+      notes: entry.notes, source_message: entry.sourceMessage,
+    });
+    if (error) console.error("Routine customization sync failed:", error.message);
+  };
+
+  const deleteRoutineCustomization = async (id) => {
+    const updated = routineCustomizations.filter((c) => c.id !== id);
+    setRoutineCustomizations(updated);
+    localStorage.setItem(ROUTINE_CUSTOMIZATIONS_KEY, JSON.stringify(updated));
+    await supabase.from("routine_customizations").delete().eq("id", id);
+  };
+
+  const addCustomizationToSession = (customization) => {
+    setForm((prev) => ({
+      ...prev,
+      exercises: [...prev.exercises, blankExercise(customization.exerciseName)],
+    }));
   };
 
   const startSuggestedSession = () => {
@@ -955,6 +1009,17 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
       if (error) errors.push(`Cardio: ${error.message}`);
     }
 
+    // Routine customizations
+    if (routineCustomizations.length > 0) {
+      const entries = routineCustomizations.map((c) => ({
+        id: c.id, created_at: c.createdAt, workout_type: c.workoutType,
+        exercise_name: c.exerciseName, prescription: c.prescription,
+        notes: c.notes, source_message: c.sourceMessage,
+      }));
+      const { error } = await supabase.from("routine_customizations").upsert(entries, { onConflict: "id" });
+      if (error) errors.push(`Routine customizations: ${error.message}`);
+    }
+
     setForceSyncMsg(errors.length === 0
       ? "✓ All data synced to Supabase."
       : `Synced with errors — ${errors.join(" | ")}`
@@ -1111,6 +1176,27 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
                   <Input value={form.pain} onChange={(e) => setForm({ ...form, pain: e.target.value })} placeholder="None / Lower back / Shoulder" />
                 </div>
               </div>
+
+              {/* Saved coach suggestions for this workout type */}
+              {routineCustomizations.filter((c) => c.workoutType === form.workout).length > 0 && (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 space-y-2">
+                  <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
+                    Saved Coach Suggestions for {form.workout}
+                  </p>
+                  {routineCustomizations.filter((c) => c.workoutType === form.workout).map((c) => (
+                    <div key={c.id} className="flex items-center justify-between gap-3 rounded-xl bg-white border border-emerald-200 px-3 py-2">
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-medium text-zinc-800">{c.exerciseName}</span>
+                        {c.prescription && <span className="ml-2 text-xs text-zinc-500">{c.prescription}</span>}
+                        {c.notes && <p className="text-xs text-zinc-400 mt-0.5 truncate">{c.notes}</p>}
+                      </div>
+                      <Button size="sm" onClick={() => addCustomizationToSession(c)} className="shrink-0 rounded-xl h-7 px-3 text-xs bg-emerald-600 hover:bg-emerald-700 text-white">
+                        + Add
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -1436,6 +1522,46 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
                 </div>
               )}
 
+              {/* ── Saved routine customizations ── */}
+              {routineCustomizations.length > 0 && (
+                <div className="mt-2">
+                  <Card className="rounded-3xl border-emerald-200 bg-emerald-50">
+                    <CardHeader>
+                      <CardTitle className="text-base text-emerald-800">Saved Routine Additions</CardTitle>
+                      <p className="text-sm text-emerald-600">These appear in your workout form whenever you log the matching day</p>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {["Push", "Pull", "Legs"].map((type) => {
+                        const entries = routineCustomizations.filter((c) => c.workoutType === type);
+                        if (!entries.length) return null;
+                        return (
+                          <div key={type}>
+                            <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-1.5">{type} Day</p>
+                            {entries.map((c) => (
+                              <div key={c.id} className="flex items-start justify-between gap-3 rounded-xl border border-emerald-200 bg-white px-3 py-2 mb-1.5">
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium text-zinc-800">{c.exerciseName}</div>
+                                  {c.prescription && <div className="text-xs text-zinc-500">{c.prescription}</div>}
+                                  {c.notes && <div className="text-xs text-zinc-400 mt-0.5">{c.notes}</div>}
+                                  <div className="text-xs text-zinc-300 mt-0.5">Added {c.createdAt}</div>
+                                </div>
+                                <button
+                                  onClick={() => deleteRoutineCustomization(c.id)}
+                                  className="text-zinc-300 hover:text-red-400 transition shrink-0 mt-0.5"
+                                  title="Remove"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+
               {/* ── Coach Chat ── always visible */}
               <div className="mt-2">
                 <Card className="rounded-3xl border-zinc-200">
@@ -1464,16 +1590,80 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
                         </p>
                       )}
                       {coachChat.map((msg) => (
-                        <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                          <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap ${
-                            msg.role === "user"
-                              ? "bg-zinc-900 text-white rounded-br-md"
-                              : msg.isError
-                              ? "bg-red-50 border border-red-200 text-red-700 rounded-bl-md"
-                              : "bg-zinc-100 text-zinc-800 rounded-bl-md"
-                          }`}>
-                            {msg.text}
+                        <div key={msg.id} className="space-y-1">
+                          <div className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                            <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap ${
+                              msg.role === "user"
+                                ? "bg-zinc-900 text-white rounded-br-md"
+                                : msg.isError
+                                ? "bg-red-50 border border-red-200 text-red-700 rounded-bl-md"
+                                : "bg-zinc-100 text-zinc-800 rounded-bl-md"
+                            }`}>
+                              {msg.text}
+                            </div>
                           </div>
+                          {/* Save to routine button — only on AI messages */}
+                          {msg.role === "model" && !msg.isError && (
+                            <div className="flex justify-start pl-1">
+                              {addingToRoutine?.messageId === msg.id ? (
+                                <div className="w-full max-w-sm rounded-2xl border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+                                  <p className="text-xs font-semibold text-emerald-700">Save exercise to routine</p>
+                                  <select
+                                    value={addingToRoutine.workoutType}
+                                    onChange={(e) => setAddingToRoutine((p) => ({ ...p, workoutType: e.target.value }))}
+                                    className="w-full rounded-xl border border-emerald-200 bg-white px-3 py-1.5 text-xs text-zinc-800"
+                                  >
+                                    <option value="Push">Push Day</option>
+                                    <option value="Pull">Pull Day</option>
+                                    <option value="Legs">Legs Day</option>
+                                  </select>
+                                  <Input
+                                    value={addingToRoutine.exerciseName}
+                                    onChange={(e) => setAddingToRoutine((p) => ({ ...p, exerciseName: e.target.value }))}
+                                    placeholder="Exercise name (e.g. Chest-Supported Row)"
+                                    className="rounded-xl text-xs h-8"
+                                  />
+                                  <Input
+                                    value={addingToRoutine.prescription}
+                                    onChange={(e) => setAddingToRoutine((p) => ({ ...p, prescription: e.target.value }))}
+                                    placeholder="Sets / reps (e.g. 3 × 12)"
+                                    className="rounded-xl text-xs h-8"
+                                  />
+                                  <Input
+                                    value={addingToRoutine.notes}
+                                    onChange={(e) => setAddingToRoutine((p) => ({ ...p, notes: e.target.value }))}
+                                    placeholder="Notes (optional)"
+                                    className="rounded-xl text-xs h-8"
+                                  />
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      onClick={() => saveRoutineCustomization(addingToRoutine)}
+                                      disabled={!addingToRoutine.exerciseName.trim()}
+                                      className="rounded-xl h-7 px-3 text-xs bg-emerald-600 hover:bg-emerald-700 text-white flex-1"
+                                    >
+                                      Save to Routine
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => setAddingToRoutine(null)}
+                                      className="rounded-xl h-7 px-3 text-xs text-zinc-400"
+                                    >
+                                      Cancel
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => setAddingToRoutine({ messageId: msg.id, workoutType: "Push", exerciseName: "", prescription: "", notes: "", sourceMessage: msg.text })}
+                                  className="text-xs text-zinc-400 hover:text-emerald-600 transition flex items-center gap-1"
+                                >
+                                  <Plus className="h-3 w-3" /> Save to routine
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       ))}
                       {chatLoading && (
