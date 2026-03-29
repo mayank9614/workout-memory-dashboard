@@ -272,6 +272,7 @@ const ABS_WEEK_KEY = "wmd_abs_week";
 const SESSION_INSIGHTS_KEY = "wmd_session_insights";
 const COACH_CHAT_KEY = "wmd_coach_chat";
 const ROUTINE_CUSTOMIZATIONS_KEY = "wmd_routine_customizations";
+const ROUTINES_KEY = "wmd_ppl_routines";
 
 const QUICK_PROMPTS = [
   "Lower back-safe alternative to bent-over barbell row",
@@ -564,7 +565,7 @@ export default function WorkoutMemoryDashboard() {
     pump: "",
     pain: "",
     notes: "",
-    exercises: templates.Push.map((x) => blankExercise(x)),
+    exercises: (loadFromStorage(ROUTINES_KEY, templates).Push || templates.Push).map((x) => blankExercise(x)),
   });
   const [recommendations, setRecommendations] = useState(() => loadFromStorage(RECS_KEY, null));
   const [loadingAI, setLoadingAI] = useState(false);
@@ -582,7 +583,11 @@ export default function WorkoutMemoryDashboard() {
   const [chatLoading, setChatLoading] = useState(false);
   const chatBottomRef = React.useRef(null);
   const [routineCustomizations, setRoutineCustomizations] = useState(() => loadFromStorage(ROUTINE_CUSTOMIZATIONS_KEY, []));
-  const [addingToRoutine, setAddingToRoutine] = useState(null); // { messageId, workoutType, exerciseName, prescription, notes }
+  const [addingToRoutine, setAddingToRoutine] = useState(null);
+  const [savedRoutine, setSavedRoutine] = useState(() => loadFromStorage(ROUTINES_KEY, templates));
+  const [routineNewExercise, setRoutineNewExercise] = useState({ Push: "", Pull: "", Legs: "" });
+  const [routineSaving, setRoutineSaving] = useState(false);
+  const [routineSaveMsg, setRoutineSaveMsg] = useState(""); // { messageId, workoutType, exerciseName, prescription, notes }
 
   // Load all data from Supabase on mount
   useEffect(() => {
@@ -663,6 +668,28 @@ export default function WorkoutMemoryDashboard() {
             localStorage.setItem(ABS_WEEK_KEY, JSON.stringify(week));
           }
         }
+      }
+
+      // PPL routines
+      const { data: routineData, error: routineError } = await supabase
+        .from("ppl_routines")
+        .select("*");
+      if (!routineError && routineData && routineData.length > 0) {
+        const mapped = routineData.reduce((acc, row) => {
+          acc[row.workout_type] = row.exercise_names || [];
+          return acc;
+        }, {});
+        // Only update if all 3 types present
+        if (mapped.Push && mapped.Pull && mapped.Legs) {
+          setSavedRoutine(mapped);
+          localStorage.setItem(ROUTINES_KEY, JSON.stringify(mapped));
+        }
+      } else if (!routineError && routineData && routineData.length === 0) {
+        // Seed Supabase with the default templates
+        const entries = Object.entries(templates).map(([workout_type, exercise_names]) => ({
+          workout_type, exercise_names, updated_at: new Date().toISOString().slice(0, 10),
+        }));
+        await supabase.from("ppl_routines").insert(entries);
       }
 
       // Routine customizations
@@ -790,6 +817,24 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
     if (error) console.error("Routine customization sync failed:", error.message);
   };
 
+  const saveRoutineToDB = async () => {
+    setRoutineSaving(true);
+    setRoutineSaveMsg("");
+    const today = new Date().toISOString().slice(0, 10);
+    const entries = Object.entries(savedRoutine).map(([workout_type, exercise_names]) => ({
+      workout_type, exercise_names, updated_at: today,
+    }));
+    const { error } = await supabase.from("ppl_routines").upsert(entries, { onConflict: "workout_type" });
+    if (error) {
+      setRoutineSaveMsg("Save failed: " + error.message);
+    } else {
+      localStorage.setItem(ROUTINES_KEY, JSON.stringify(savedRoutine));
+      setRoutineSaveMsg("✓ Routine saved.");
+    }
+    setRoutineSaving(false);
+    setTimeout(() => setRoutineSaveMsg(""), 3000);
+  };
+
   const deleteRoutineCustomization = async (id) => {
     const updated = routineCustomizations.filter((c) => c.id !== id);
     setRoutineCustomizations(updated);
@@ -813,7 +858,7 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
       pump: "",
       pain: "",
       notes: "",
-      exercises: templates[nextWorkout].map((x) => blankExercise(x)),
+      exercises: (savedRoutine[nextWorkout] || templates[nextWorkout]).map((x) => blankExercise(x)),
     });
     setOpen(true);
   };
@@ -823,7 +868,7 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
       ...prev,
       workout: value,
       title: prev.title || value,
-      exercises: templates[value].map((x) => blankExercise(x)),
+      exercises: (savedRoutine[value] || templates[value]).map((x) => blankExercise(x)),
     }));
   };
 
@@ -889,7 +934,7 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
       pump: "",
       pain: "",
       notes: "",
-      exercises: templates.Push.map((x) => blankExercise(x)),
+      exercises: (savedRoutine.Push || templates.Push).map((x) => blankExercise(x)),
     });
 
     // Persist to Supabase
@@ -1294,11 +1339,12 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
 
         {/* Tabs */}
         <Tabs defaultValue="history" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4 rounded-2xl">
+          <TabsList className="grid w-full grid-cols-5 rounded-2xl">
             <TabsTrigger value="history" className="text-xs sm:text-sm">History</TabsTrigger>
             <TabsTrigger value="current" className="text-xs sm:text-sm">Session</TabsTrigger>
             <TabsTrigger value="ai" className="text-xs sm:text-sm">AI Coaching</TabsTrigger>
             <TabsTrigger value="cricket" className="text-xs sm:text-sm">Cricket Fit</TabsTrigger>
+            <TabsTrigger value="routine" className="text-xs sm:text-sm">Routine</TabsTrigger>
           </TabsList>
 
           {/* History tab */}
@@ -1730,6 +1776,121 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
               <LowerBackCard lowerBackLog={lowerBackLog} onToggle={toggleLowerBackExercise} />
               <AbsProgramCard absWeek={absWeek} absLog={absLog} onToggle={toggleAbsExercise} onAdvanceWeek={advanceAbsWeek} />
               <CardioChallenge cardioLog={cardioLog} onLog={logCardioSession} />
+            </div>
+          </TabsContent>
+
+          {/* Routine tab */}
+          <TabsContent value="routine">
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-lg font-semibold">My PPL Routine</h2>
+                <p className="text-sm text-zinc-500">Edit your Push / Pull / Legs exercise lists and save to the database.</p>
+              </div>
+
+              {["Push", "Pull", "Legs"].map((type) => (
+                <Card key={type} className="rounded-3xl border-zinc-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Dumbbell className="h-4 w-4 text-zinc-500" />
+                      {type} Day
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {(savedRoutine[type] || []).map((ex, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <span className="flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm">{ex}</span>
+                        <button
+                          onClick={() => {
+                            const updated = { ...savedRoutine, [type]: savedRoutine[type].filter((_, i) => i !== idx) };
+                            setSavedRoutine(updated);
+                            localStorage.setItem(ROUTINES_KEY, JSON.stringify(updated));
+                          }}
+                          className="rounded-lg p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 transition"
+                          title="Remove exercise"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                    <div className="flex gap-2 pt-1">
+                      <Input
+                        placeholder={`Add ${type} exercise…`}
+                        value={routineNewExercise[type]}
+                        onChange={(e) => setRoutineNewExercise((prev) => ({ ...prev, [type]: e.target.value }))}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && routineNewExercise[type].trim()) {
+                            const updated = { ...savedRoutine, [type]: [...(savedRoutine[type] || []), routineNewExercise[type].trim()] };
+                            setSavedRoutine(updated);
+                            localStorage.setItem(ROUTINES_KEY, JSON.stringify(updated));
+                            setRoutineNewExercise((prev) => ({ ...prev, [type]: "" }));
+                          }
+                        }}
+                        className="rounded-xl text-sm h-8"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="rounded-xl h-8 px-3 shrink-0"
+                        onClick={() => {
+                          if (!routineNewExercise[type].trim()) return;
+                          const updated = { ...savedRoutine, [type]: [...(savedRoutine[type] || []), routineNewExercise[type].trim()] };
+                          setSavedRoutine(updated);
+                          localStorage.setItem(ROUTINES_KEY, JSON.stringify(updated));
+                          setRoutineNewExercise((prev) => ({ ...prev, [type]: "" }));
+                        }}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+
+              {/* AI-suggested routine customizations */}
+              {routineCustomizations.length > 0 && (
+                <Card className="rounded-3xl border-zinc-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-amber-500" />
+                      AI Suggestions Added
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {routineCustomizations.map((c) => (
+                      <div key={c.id} className="flex items-start justify-between gap-2 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2">
+                        <div>
+                          <div className="text-sm font-medium text-zinc-800">{c.exercise_name} <Badge variant="outline" className="ml-1 text-xs">{c.workout_type}</Badge></div>
+                          {c.prescription && <div className="text-xs text-zinc-500 mt-0.5">{c.prescription}</div>}
+                          {c.notes && <div className="text-xs text-zinc-400 mt-0.5">{c.notes}</div>}
+                        </div>
+                        <button
+                          onClick={() => deleteRoutineCustomization(c.id)}
+                          className="shrink-0 rounded-lg p-1 text-zinc-400 hover:text-red-500 hover:bg-red-50 transition mt-0.5"
+                          title="Remove"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              <div className="flex items-center gap-3">
+                <Button
+                  onClick={saveRoutineToDB}
+                  disabled={routineSaving}
+                  className="rounded-xl bg-zinc-900 hover:bg-zinc-700 text-white"
+                >
+                  {routineSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Save to Database
+                </Button>
+                {routineSaveMsg && (
+                  <span className={`text-sm ${routineSaveMsg.startsWith("✓") ? "text-emerald-600" : "text-red-500"}`}>
+                    {routineSaveMsg}
+                  </span>
+                )}
+              </div>
             </div>
           </TabsContent>
         </Tabs>
