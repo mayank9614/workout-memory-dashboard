@@ -189,12 +189,13 @@ const CRICKET_LEVELS = [
 ];
 
 const CARDIO_DRILLS = [
-  { id: "match_sim", name: "Match Simulation", xp: 60, emoji: "🏆", desc: "Full intensity 2hr fielding/batting practice" },
-  { id: "boundary_sprint", name: "Boundary Sprint", xp: 50, emoji: "⚡", desc: "20m sprint × 10, 30s rest between sets" },
-  { id: "fielding_circuit", name: "Fielding Circuit", xp: 45, emoji: "🏏", desc: "Dive, get up, sprint 10m sequence" },
-  { id: "interval_run", name: "400m Intervals", xp: 40, emoji: "🏃", desc: "6 × 400m with 90s rest between" },
-  { id: "shuttle_run", name: "Shuttle Runs", xp: 35, emoji: "↔️", desc: "10m shuttles × 15, 45s rest" },
-  { id: "steady_jog", name: "Steady Jog", xp: 30, emoji: "🌿", desc: "20–30 min easy aerobic base work" },
+  { id: "treadmill_sprint", name: "Treadmill Sprints", xp: 50, emoji: "⚡", desc: "30s sprint / 30s walk × 10 — max effort HIIT" },
+  { id: "agility_circuit", name: "Agility Circuit", xp: 45, emoji: "🔀", desc: "Cone drills, ladder, direction changes — builds fielding sharpness" },
+  { id: "interval_run", name: "400m Intervals", xp: 40, emoji: "🏃", desc: "6 × 400m with 90s rest — cricket match aerobic capacity" },
+  { id: "rowing_machine", name: "Rowing Machine", xp: 38, emoji: "🚣", desc: "20 min steady or 500m intervals — low-impact, back-friendly" },
+  { id: "shuttle_run", name: "Shuttle Runs", xp: 35, emoji: "↔️", desc: "10m shuttles × 15, 45s rest — between-wickets speed" },
+  { id: "steady_jog", name: "Steady Jog", xp: 30, emoji: "🌿", desc: "20–30 min easy aerobic base — gym treadmill or outdoors" },
+  { id: "stationary_bike", name: "Stationary Bike", xp: 25, emoji: "🚴", desc: "30 min cycling — low impact, great during lower back recovery" },
   { id: "yoga_flex", name: "Yoga / Flexibility", xp: 20, emoji: "🧘", desc: "Lower back focused yoga & mobility flow" },
 ];
 
@@ -401,6 +402,26 @@ export default function WorkoutMemoryDashboard() {
     pullCount: logs.filter((l) => l.workout === "Pull").length,
     legCount: logs.filter((l) => l.workout === "Legs").length,
   }), [logs]);
+
+  const nextWorkout = useMemo(() => {
+    if (logs.length === 0) return "Push";
+    const cycle = { Push: "Pull", Pull: "Legs", Legs: "Push" };
+    return cycle[logs[0].workout] || "Push";
+  }, [logs]);
+
+  const startSuggestedSession = () => {
+    setForm({
+      date: todayStr(),
+      workout: nextWorkout,
+      title: "",
+      energy: "",
+      pump: "",
+      pain: "",
+      notes: "",
+      exercises: templates[nextWorkout].map((x) => blankExercise(x)),
+    });
+    setOpen(true);
+  };
 
   const updateWorkoutType = (value) => {
     setForm((prev) => ({
@@ -756,6 +777,20 @@ export default function WorkoutMemoryDashboard() {
                   <CardTitle className="text-lg">Workout History</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  {/* Next session suggestion */}
+                  {logs.length > 0 && (
+                    <div className="rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50 p-3 flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-emerald-600">Up Next</div>
+                        <div className="mt-0.5 text-sm font-bold text-zinc-800">{nextWorkout} Day</div>
+                        <div className="text-xs text-zinc-500">Last was {logs[0].workout}</div>
+                      </div>
+                      <Button size="sm" onClick={startSuggestedSession} className="shrink-0 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white h-8 px-3 text-xs">
+                        <Plus className="mr-1 h-3 w-3" />
+                        Start
+                      </Button>
+                    </div>
+                  )}
                   {logs.length === 0 && (
                     <p className="text-sm text-zinc-400">No sessions logged yet.</p>
                   )}
