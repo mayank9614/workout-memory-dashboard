@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CalendarDays, Dumbbell, Plus, TrendingUp, Activity, Sparkles, Loader2, Trash2, X, Heart, Trophy, Flame, Zap } from "lucide-react";
+import { CalendarDays, Dumbbell, Plus, TrendingUp, Activity, Sparkles, Loader2, Trash2, X, Heart, Trophy, Flame, Zap, Send, MessageCircle } from "lucide-react";
 
 // ── Seed data ──────────────────────────────────────────────────────────────
 const seedLogs = [
@@ -270,6 +270,16 @@ const CARDIO_LOG_KEY = "wmd_cardio_log";
 const ABS_LOG_KEY = "wmd_abs_log";
 const ABS_WEEK_KEY = "wmd_abs_week";
 const SESSION_INSIGHTS_KEY = "wmd_session_insights";
+const COACH_CHAT_KEY = "wmd_coach_chat";
+
+const QUICK_PROMPTS = [
+  "Lower back-safe alternative to bent-over barbell row",
+  "Can I train legs today with lower back pain?",
+  "What should my next Push session focus on?",
+  "Best gym cardio to improve cricket fielding stamina",
+  "I feel weak today — should I deload or push through?",
+  "Add a shoulder variation to my next Push day",
+];
 
 function loadFromStorage(key, fallback) {
   try {
@@ -566,6 +576,10 @@ export default function WorkoutMemoryDashboard() {
   const [loadingInsightId, setLoadingInsightId] = useState(null);
   const [forceSyncing, setForceSyncing] = useState(false);
   const [forceSyncMsg, setForceSyncMsg] = useState("");
+  const [coachChat, setCoachChat] = useState(() => loadFromStorage(COACH_CHAT_KEY, []));
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatBottomRef = React.useRef(null);
 
   // Load all data from Supabase on mount
   useEffect(() => {
@@ -677,6 +691,64 @@ export default function WorkoutMemoryDashboard() {
   }, [logs]);
 
   const liveMetrics = useMemo(() => computeWorkoutMetrics(logs), [logs]);
+
+  // Auto-scroll chat to bottom on new messages
+  React.useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [coachChat, chatLoading]);
+
+  const sendCoachMessage = async (text) => {
+    const msg = (text || chatInput).trim();
+    if (!msg || chatLoading) return;
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) return;
+
+    const userMsg = { role: "user", text: msg, id: Date.now() };
+    // Snapshot history BEFORE state update (state is async)
+    const historyForGemini = coachChat.filter((m) => !m.isError);
+    const newChat = [...coachChat, userMsg];
+    setCoachChat(newChat);
+    setChatInput("");
+    setChatLoading(true);
+
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({
+        model: "gemini-2.0-flash",
+        systemInstruction: `You are a personal strength & conditioning coach. Here is your athlete's profile:
+- Training split: Push / Pull / Legs (PPL)
+- Known issue: LOWER BACK PAIN — always suggest spine-safe alternatives; never recommend exercises that compress the lumbar spine
+- Sport: Cricket (plays weekends) — fielding stamina and rotational power matter
+- Currently on Week ${absWeek} of the 4-week McGill Big 3 abs program
+- Recent sessions: ${logs.slice(0, 5).map((l) => `${l.date} ${l.workout} (${l.exercises.map((e) => e.name).join(", ")})`).join(" | ") || "none yet"}
+
+Be specific: give real exercise names with sets/reps when suggesting. Keep replies concise and practical.`,
+      });
+
+      const chat = model.startChat({
+        history: historyForGemini.map((m) => ({
+          role: m.role,
+          parts: [{ text: m.text }],
+        })),
+      });
+
+      const result = await chat.sendMessage(msg);
+      const aiMsg = { role: "model", text: result.response.text(), id: Date.now() + 1 };
+      const finalChat = [...newChat, aiMsg];
+      setCoachChat(finalChat);
+      localStorage.setItem(COACH_CHAT_KEY, JSON.stringify(finalChat));
+    } catch (err) {
+      const errMsg = { role: "model", text: `Sorry, something went wrong: ${err.message}`, id: Date.now() + 1, isError: true };
+      setCoachChat([...newChat, errMsg]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const clearCoachChat = () => {
+    setCoachChat([]);
+    localStorage.removeItem(COACH_CHAT_KEY);
+  };
 
   const startSuggestedSession = () => {
     setForm({
@@ -1363,6 +1435,98 @@ export default function WorkoutMemoryDashboard() {
                   )}
                 </div>
               )}
+
+              {/* ── Coach Chat ── always visible */}
+              <div className="mt-2">
+                <Card className="rounded-3xl border-zinc-200">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <MessageCircle className="h-4 w-4 text-zinc-500" />
+                          Ask Your Coach
+                        </CardTitle>
+                        <p className="text-sm text-zinc-500 mt-0.5">Real-time answers — your workout history &amp; profile are already loaded</p>
+                      </div>
+                      {coachChat.length > 0 && (
+                        <Button variant="ghost" size="sm" onClick={clearCoachChat} className="text-xs text-zinc-400 h-7 px-2 rounded-xl hover:text-red-500">
+                          Clear
+                        </Button>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Message history */}
+                    <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                      {coachChat.length === 0 && (
+                        <p className="text-sm text-zinc-400 text-center py-8">
+                          Ask anything — exercise alternatives, session tweaks, whether to train with pain…
+                        </p>
+                      )}
+                      {coachChat.map((msg) => (
+                        <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                          <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap ${
+                            msg.role === "user"
+                              ? "bg-zinc-900 text-white rounded-br-md"
+                              : msg.isError
+                              ? "bg-red-50 border border-red-200 text-red-700 rounded-bl-md"
+                              : "bg-zinc-100 text-zinc-800 rounded-bl-md"
+                          }`}>
+                            {msg.text}
+                          </div>
+                        </div>
+                      ))}
+                      {chatLoading && (
+                        <div className="flex justify-start">
+                          <div className="bg-zinc-100 rounded-2xl rounded-bl-md px-4 py-3">
+                            <div className="flex gap-1 items-center">
+                              <span className="h-1.5 w-1.5 rounded-full bg-zinc-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+                              <span className="h-1.5 w-1.5 rounded-full bg-zinc-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+                              <span className="h-1.5 w-1.5 rounded-full bg-zinc-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      <div ref={chatBottomRef} />
+                    </div>
+
+                    {/* Quick prompt chips — show when chat is empty */}
+                    {coachChat.length === 0 && (
+                      <div className="flex gap-2 flex-wrap">
+                        {QUICK_PROMPTS.map((p) => (
+                          <button
+                            key={p}
+                            onClick={() => sendCoachMessage(p)}
+                            disabled={chatLoading}
+                            className="text-xs px-3 py-1.5 rounded-full border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-600 transition disabled:opacity-40"
+                          >
+                            {p}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Input row */}
+                    <div className="flex gap-2">
+                      <Input
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendCoachMessage(); } }}
+                        placeholder="e.g. Give me a lower-back safe row variation…"
+                        className="rounded-2xl flex-1"
+                        disabled={chatLoading}
+                      />
+                      <Button
+                        onClick={() => sendCoachMessage()}
+                        disabled={!chatInput.trim() || chatLoading}
+                        className="rounded-2xl shrink-0 w-10 p-0"
+                      >
+                        {chatLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           </TabsContent>
 
