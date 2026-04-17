@@ -507,12 +507,12 @@ const QUICK_PROMPTS = [
 ];
 
 const SESSION_FEEL_OPTIONS = [
-  { value: "coach-decides", label: "Coach decides" },
-  { value: "heavy-compounds", label: "Heavy compounds" },
-  { value: "pump-hypertrophy", label: "Pump / hypertrophy" },
-  { value: "quick-efficient", label: "Quick and efficient" },
-  { value: "machine-dumbbell", label: "Machine / dumbbell day" },
-  { value: "lower-back-safe", label: "Lower-back-safe" },
+  { value: "coach-decides", label: "Coach decides", description: "Balanced session based on your recent history." },
+  { value: "heavy-compounds", label: "Heavy compounds", description: "More top-end pressing, pulling, or squat work." },
+  { value: "pump-hypertrophy", label: "Pump / hypertrophy", description: "More volume, more accessories, more muscle focus." },
+  { value: "quick-efficient", label: "Quick and efficient", description: "Shorter session with fewer, higher-value movements." },
+  { value: "machine-dumbbell", label: "Machine / dumbbell day", description: "Less setup, more stable exercises and smoother flow." },
+  { value: "lower-back-safe", label: "Lower-back-safe", description: "Exercise choices biased toward lower spinal stress." },
 ];
 
 function loadFromStorage(key, fallback) {
@@ -1888,19 +1888,28 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
                 <div className="grid gap-3 sm:grid-cols-[220px_1fr]">
                   <div>
                     <label className="mb-2 block text-sm font-medium text-zinc-800">What do you feel like doing?</label>
-                    <Select
-                      value={plannerInput.feel}
-                      onValueChange={(value) => setPlannerInput((prev) => ({ ...prev, feel: value }))}
-                    >
-                      <SelectTrigger className="bg-white">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {SESSION_FEEL_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="grid gap-2">
+                      {SESSION_FEEL_OPTIONS.map((option) => {
+                        const isActive = plannerInput.feel === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => setPlannerInput((prev) => ({ ...prev, feel: option.value }))}
+                            className={`rounded-2xl border px-3 py-2 text-left transition ${
+                              isActive
+                                ? "border-indigo-600 bg-indigo-600 text-white shadow-sm"
+                                : "border-indigo-200 bg-white text-zinc-800 hover:border-indigo-400 hover:bg-indigo-50"
+                            }`}
+                          >
+                            <div className="text-sm font-medium">{option.label}</div>
+                            <div className={`mt-1 text-xs ${isActive ? "text-indigo-100" : "text-zinc-500"}`}>
+                              {option.description}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   <div>
