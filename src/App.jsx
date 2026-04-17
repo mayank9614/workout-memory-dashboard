@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CalendarDays, Dumbbell, Plus, TrendingUp, Activity, Sparkles, Loader2, Trash2, X, Heart, Trophy, Flame, Zap, Send, MessageCircle } from "lucide-react";
+import { CalendarDays, Dumbbell, Plus, TrendingUp, Activity, Sparkles, Loader2, Trash2, X, Heart, Trophy, Flame, Zap, Send, MessageCircle, Shuffle, Layers } from "lucide-react";
 
 // ── Seed data ──────────────────────────────────────────────────────────────
 const seedLogs = [
@@ -103,6 +103,229 @@ const templates = {
     "Core Work",
   ],
 };
+
+// ── Exercise Variation Library ─────────────────────────────────────────────
+// Each variation is a curated block inspired by established hypertrophy
+// literature (Jeff Nippard's PPL system, Renaissance Periodization, and
+// common dumbbell/machine-only templates). Default sets + reps give sensible
+// starting prescriptions; the user can still override everything at log time.
+const EXERCISE_LIBRARY = {
+  Push: [
+    {
+      id: "push-heavy-compound",
+      label: "Heavy Compound",
+      focus: "Strength-first with the big barbell lifts",
+      exercises: [
+        { name: "Barbell Bench Press", sets: 4, reps: "5-8" },
+        { name: "Overhead Barbell Press", sets: 3, reps: "6-8" },
+        { name: "Incline Dumbbell Press", sets: 3, reps: "8-10" },
+        { name: "Weighted Dips", sets: 3, reps: "6-10" },
+        { name: "Skullcrushers", sets: 3, reps: "8-12" },
+        { name: "Lateral Raise", sets: 3, reps: "12-15" },
+      ],
+    },
+    {
+      id: "push-hypertrophy",
+      label: "Hypertrophy / Volume",
+      focus: "Moderate load, high volume, pump-focused",
+      exercises: [
+        { name: "Incline Dumbbell Press", sets: 4, reps: "8-12" },
+        { name: "Machine Chest Press", sets: 3, reps: "10-12" },
+        { name: "Seated Dumbbell Shoulder Press", sets: 3, reps: "8-12" },
+        { name: "Cable Fly (low-to-high)", sets: 3, reps: "12-15" },
+        { name: "Cable Lateral Raise", sets: 4, reps: "12-15" },
+        { name: "Rope Pushdown", sets: 3, reps: "12-15" },
+        { name: "Overhead Rope Tricep Extension", sets: 3, reps: "12-15" },
+      ],
+    },
+    {
+      id: "push-dumbbell-only",
+      label: "Dumbbell Only",
+      focus: "Minimal kit — dumbbells only",
+      exercises: [
+        { name: "Flat Dumbbell Bench Press", sets: 4, reps: "8-12" },
+        { name: "Incline Dumbbell Press", sets: 3, reps: "8-12" },
+        { name: "Dumbbell Shoulder Press", sets: 3, reps: "8-10" },
+        { name: "Dumbbell Lateral Raise", sets: 3, reps: "12-15" },
+        { name: "Dumbbell Front Raise", sets: 3, reps: "12-15" },
+        { name: "Overhead Dumbbell Tricep Extension", sets: 3, reps: "10-12" },
+        { name: "Dumbbell Kickback", sets: 3, reps: "12-15" },
+      ],
+    },
+    {
+      id: "push-machine-cable",
+      label: "Machine & Cable",
+      focus: "Joint-friendly — stable tension, constant load",
+      exercises: [
+        { name: "Machine Chest Press", sets: 4, reps: "8-12" },
+        { name: "Pec Deck", sets: 3, reps: "10-15" },
+        { name: "Machine Shoulder Press", sets: 3, reps: "8-12" },
+        { name: "Cable Crossover", sets: 3, reps: "12-15" },
+        { name: "Cable Lateral Raise", sets: 4, reps: "12-15" },
+        { name: "Cable Tricep Pushdown", sets: 3, reps: "12-15" },
+        { name: "Cable Overhead Extension", sets: 3, reps: "12-15" },
+      ],
+    },
+    {
+      id: "push-power",
+      label: "Power / Athletic",
+      focus: "Explosive pressing for sport carryover",
+      exercises: [
+        { name: "Push Press", sets: 4, reps: "3-5" },
+        { name: "Incline Bench Press", sets: 4, reps: "5-8" },
+        { name: "Close-Grip Bench Press", sets: 3, reps: "6-8" },
+        { name: "Weighted Dips", sets: 3, reps: "6-8" },
+        { name: "Plyometric Push-up", sets: 3, reps: "5-8" },
+        { name: "Medicine Ball Chest Throw", sets: 3, reps: "6-8" },
+      ],
+    },
+  ],
+  Pull: [
+    {
+      id: "pull-heavy-compound",
+      label: "Heavy Compound",
+      focus: "Deadlift + weighted pulls + big rows",
+      exercises: [
+        { name: "Conventional Deadlift", sets: 3, reps: "3-5" },
+        { name: "Weighted Pull-up", sets: 4, reps: "5-8" },
+        { name: "Barbell Row", sets: 3, reps: "6-8" },
+        { name: "Chest-Supported T-Bar Row", sets: 3, reps: "8-10" },
+        { name: "Barbell Curl", sets: 3, reps: "8-10" },
+        { name: "Hammer Curl", sets: 3, reps: "10-12" },
+      ],
+    },
+    {
+      id: "pull-hypertrophy",
+      label: "Hypertrophy / Volume",
+      focus: "Controlled tempo, more sets, more pump",
+      exercises: [
+        { name: "Lat Pulldown", sets: 4, reps: "8-12" },
+        { name: "Seated Cable Row", sets: 3, reps: "10-12" },
+        { name: "Single-Arm Dumbbell Row", sets: 3, reps: "10-12" },
+        { name: "Face Pull", sets: 3, reps: "12-15" },
+        { name: "Incline Dumbbell Curl", sets: 3, reps: "10-12" },
+        { name: "Cable Hammer Curl", sets: 3, reps: "12-15" },
+      ],
+    },
+    {
+      id: "pull-vertical",
+      label: "Vertical Emphasis",
+      focus: "Lat width + vertical pulling patterns",
+      exercises: [
+        { name: "Weighted Pull-up", sets: 4, reps: "5-8" },
+        { name: "Wide-Grip Lat Pulldown", sets: 3, reps: "8-12" },
+        { name: "Straight-Arm Pulldown", sets: 3, reps: "12-15" },
+        { name: "Neutral-Grip Chin-up", sets: 3, reps: "6-10" },
+        { name: "Preacher Curl", sets: 3, reps: "10-12" },
+        { name: "Cable Curl", sets: 3, reps: "12-15" },
+      ],
+    },
+    {
+      id: "pull-horizontal",
+      label: "Horizontal Emphasis",
+      focus: "Back thickness + rowing patterns",
+      exercises: [
+        { name: "Pendlay Row", sets: 4, reps: "5-8" },
+        { name: "Chest-Supported Row", sets: 3, reps: "8-12" },
+        { name: "Seated Cable Row (wide)", sets: 3, reps: "10-12" },
+        { name: "Reverse Fly / Rear Delt Fly", sets: 3, reps: "12-15" },
+        { name: "EZ Bar Curl", sets: 3, reps: "8-10" },
+        { name: "Dumbbell Hammer Curl", sets: 3, reps: "10-12" },
+      ],
+    },
+    {
+      id: "pull-dumbbell-only",
+      label: "Dumbbell Only",
+      focus: "Pull day with just dumbbells",
+      exercises: [
+        { name: "Single-Arm Dumbbell Row", sets: 4, reps: "8-12" },
+        { name: "Chest-Supported Dumbbell Row", sets: 3, reps: "10-12" },
+        { name: "Dumbbell Pullover", sets: 3, reps: "10-12" },
+        { name: "Dumbbell Reverse Fly", sets: 3, reps: "12-15" },
+        { name: "Dumbbell Shrug", sets: 3, reps: "10-12" },
+        { name: "Dumbbell Curl", sets: 3, reps: "10-12" },
+        { name: "Dumbbell Hammer Curl", sets: 3, reps: "10-12" },
+      ],
+    },
+  ],
+  Legs: [
+    {
+      id: "legs-squat",
+      label: "Squat Focus",
+      focus: "Back squat as the primary driver",
+      exercises: [
+        { name: "Back Squat", sets: 4, reps: "5-8" },
+        { name: "Front Squat", sets: 3, reps: "6-8" },
+        { name: "Bulgarian Split Squat", sets: 3, reps: "8-10" },
+        { name: "Leg Press", sets: 3, reps: "10-12" },
+        { name: "Leg Extension", sets: 3, reps: "12-15" },
+        { name: "Standing Calf Raise", sets: 4, reps: "10-15" },
+      ],
+    },
+    {
+      id: "legs-hinge",
+      label: "Hinge Focus",
+      focus: "Deadlift + posterior chain",
+      exercises: [
+        { name: "Conventional Deadlift", sets: 3, reps: "3-5" },
+        { name: "Romanian Deadlift", sets: 3, reps: "8-10" },
+        { name: "Good Morning", sets: 3, reps: "8-10" },
+        { name: "Glute Ham Raise", sets: 3, reps: "8-10" },
+        { name: "Lying Leg Curl", sets: 3, reps: "10-12" },
+        { name: "Seated Calf Raise", sets: 4, reps: "12-15" },
+      ],
+    },
+    {
+      id: "legs-quad",
+      label: "Quad Dominant",
+      focus: "Quad-biased pressing & extensions",
+      exercises: [
+        { name: "Front Squat", sets: 4, reps: "6-8" },
+        { name: "Hack Squat", sets: 3, reps: "8-10" },
+        { name: "Leg Press (feet low)", sets: 3, reps: "10-12" },
+        { name: "Walking Lunge", sets: 3, reps: "10 each leg" },
+        { name: "Leg Extension", sets: 4, reps: "12-15" },
+        { name: "Standing Calf Raise", sets: 4, reps: "10-15" },
+      ],
+    },
+    {
+      id: "legs-posterior",
+      label: "Posterior / Glute",
+      focus: "Hamstrings + glutes priority",
+      exercises: [
+        { name: "Romanian Deadlift", sets: 4, reps: "8-10" },
+        { name: "Barbell Hip Thrust", sets: 4, reps: "8-10" },
+        { name: "Single-Leg Glute Bridge", sets: 3, reps: "10-12" },
+        { name: "Lying Leg Curl", sets: 3, reps: "10-12" },
+        { name: "Kettlebell Swing", sets: 3, reps: "15-20" },
+        { name: "Seated Calf Raise", sets: 4, reps: "12-15" },
+      ],
+    },
+    {
+      id: "legs-unilateral",
+      label: "Unilateral",
+      focus: "Single-leg emphasis — stability + balance",
+      exercises: [
+        { name: "Bulgarian Split Squat", sets: 4, reps: "8-10 each" },
+        { name: "Walking Lunge", sets: 3, reps: "10 each leg" },
+        { name: "Single-Leg Romanian Deadlift", sets: 3, reps: "8-10 each" },
+        { name: "Step-Up", sets: 3, reps: "10 each leg" },
+        { name: "Single-Leg Press", sets: 3, reps: "10-12 each" },
+        { name: "Single-Leg Calf Raise", sets: 3, reps: "12-15 each" },
+      ],
+    },
+  ],
+};
+
+// Build a form.exercises array from a library variation, honoring default set count + reps hint.
+function exercisesFromVariation(variation) {
+  if (!variation || !Array.isArray(variation.exercises)) return [];
+  return variation.exercises.map((e) => ({
+    name: e.name,
+    sets: Array.from({ length: Math.max(1, e.sets || 1) }, () => ({ reps: "", weight: "" })),
+    notes: e.reps ? `Target: ${e.reps} reps` : "",
+  }));
+}
 
 // ── Lower Back & Cricket Cardio constants ──────────────────────────────────
 const LOWER_BACK_PROGRAM = [
@@ -588,6 +811,8 @@ export default function WorkoutMemoryDashboard() {
   const [routineNewExercise, setRoutineNewExercise] = useState({ Push: "", Pull: "", Legs: "" });
   const [routineSaving, setRoutineSaving] = useState(false);
   const [routineSaveMsg, setRoutineSaveMsg] = useState(""); // { messageId, workoutType, exerciseName, prescription, notes }
+  // null = use the user's saved routine; otherwise index into EXERCISE_LIBRARY[form.workout]
+  const [variationIndex, setVariationIndex] = useState(null);
 
   // Load all data from Supabase on mount
   useEffect(() => {
@@ -750,6 +975,120 @@ export default function WorkoutMemoryDashboard() {
     setChatInput("");
     setChatLoading(true);
 
+    // ── Supabase tool implementations ────────────────────────────────────────
+    const toolImplementations = {
+      get_recent_workouts: async ({ limit = 10, workout_type } = {}) => {
+        let query = supabase.from("workout_logs").select("*").order("date", { ascending: false }).limit(Math.min(limit, 50));
+        if (workout_type) query = query.eq("workout", workout_type);
+        const { data, error } = await query;
+        if (error) return { error: error.message };
+        return data;
+      },
+      get_exercise_history: async ({ exercise_name } = {}) => {
+        const { data, error } = await supabase
+          .from("workout_logs")
+          .select("date, workout, exercises")
+          .order("date", { ascending: false })
+          .limit(100);
+        if (error) return { error: error.message };
+        const results = [];
+        for (const log of data) {
+          const matching = (log.exercises || []).filter((e) =>
+            e.name.toLowerCase().includes(exercise_name.toLowerCase())
+          );
+          if (matching.length) results.push({ date: log.date, workout: log.workout, exercises: matching });
+        }
+        return results;
+      },
+      get_workout_stats: async () => {
+        const { data, error } = await supabase
+          .from("workout_logs")
+          .select("date, workout, energy, pump, pain")
+          .order("date", { ascending: false });
+        if (error) return { error: error.message };
+        const byType = {};
+        for (const log of data) byType[log.workout] = (byType[log.workout] || 0) + 1;
+        return {
+          total_sessions: data.length,
+          by_type: byType,
+          pain_sessions: data.filter((l) => l.pain && l.pain !== "none" && l.pain !== "0").length,
+          first_session: data.length ? data[data.length - 1].date : null,
+          last_session: data.length ? data[0].date : null,
+        };
+      },
+      get_cardio_sessions: async ({ limit = 10 } = {}) => {
+        const { data, error } = await supabase
+          .from("cardio_sessions")
+          .select("*")
+          .order("date", { ascending: false })
+          .limit(limit);
+        if (error) return { error: error.message };
+        return data;
+      },
+      get_lower_back_log: async () => {
+        const { data, error } = await supabase
+          .from("lower_back_log")
+          .select("*")
+          .order("date", { ascending: false })
+          .limit(30);
+        if (error) return { error: error.message };
+        return data;
+      },
+    };
+
+    // ── Gemini tool declarations ──────────────────────────────────────────────
+    const tools = [
+      {
+        functionDeclarations: [
+          {
+            name: "get_recent_workouts",
+            description:
+              "Retrieve recent workout sessions from the database. Use this when asked about past workouts, training history, or recent sessions.",
+            parameters: {
+              type: "object",
+              properties: {
+                limit: { type: "number", description: "Number of sessions to return (default 10, max 50)" },
+                workout_type: { type: "string", description: "Filter by workout type: 'Push', 'Pull', or 'Legs'" },
+              },
+            },
+          },
+          {
+            name: "get_exercise_history",
+            description:
+              "Get the history of a specific exercise including weights, sets, and reps used over time. Use this to track progress on a specific lift.",
+            parameters: {
+              type: "object",
+              properties: {
+                exercise_name: { type: "string", description: "Name or partial name of the exercise, e.g. 'bench press', 'squat'" },
+              },
+              required: ["exercise_name"],
+            },
+          },
+          {
+            name: "get_workout_stats",
+            description:
+              "Get overall training statistics: total sessions, breakdown by workout type, pain session count, date range.",
+            parameters: { type: "object", properties: {} },
+          },
+          {
+            name: "get_cardio_sessions",
+            description: "Retrieve recent cricket-fitness cardio drill sessions with XP earned.",
+            parameters: {
+              type: "object",
+              properties: {
+                limit: { type: "number", description: "Number of sessions to return (default 10)" },
+              },
+            },
+          },
+          {
+            name: "get_lower_back_log",
+            description: "Get the lower back rehab program completion log.",
+            parameters: { type: "object", properties: {} },
+          },
+        ],
+      },
+    ];
+
     try {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({
@@ -759,9 +1098,11 @@ export default function WorkoutMemoryDashboard() {
 - Known issue: LOWER BACK PAIN — always suggest spine-safe alternatives; never recommend exercises that compress the lumbar spine
 - Sport: Cricket (plays weekends) — fielding stamina and rotational power matter
 - Currently on Week ${absWeek} of the 4-week McGill Big 3 abs program
-- Recent sessions: ${logs.slice(0, 5).map((l) => `${l.date} ${l.workout} (${l.exercises.map((e) => e.name).join(", ")})`).join(" | ") || "none yet"}
+
+You have database tools to query the athlete's actual workout history. Use them when answering questions about past performance, exercise progress, stats, or training patterns — always pull real data when the question is data-related.
 
 Be specific: give real exercise names with sets/reps when suggesting. Keep replies concise and practical.`,
+        tools,
       });
 
       const chat = model.startChat({
@@ -771,7 +1112,26 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
         })),
       });
 
-      const result = await chat.sendMessage(msg);
+      let result = await chat.sendMessage(msg);
+
+      // ── Function calling loop ────────────────────────────────────────────────
+      while (result.response.functionCalls()?.length) {
+        const calls = result.response.functionCalls();
+        const functionResponses = await Promise.all(
+          calls.map(async (call) => {
+            const impl = toolImplementations[call.name];
+            const response = impl ? await impl(call.args) : { error: "Unknown tool" };
+            return {
+              functionResponse: {
+                name: call.name,
+                response: { result: response },
+              },
+            };
+          })
+        );
+        result = await chat.sendMessage(functionResponses);
+      }
+
       const aiMsg = { role: "model", text: result.response.text(), id: Date.now() + 1 };
       const finalChat = [...newChat, aiMsg];
       setCoachChat(finalChat);
@@ -842,6 +1202,7 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
   };
 
   const startSuggestedSession = () => {
+    setVariationIndex(null);
     setForm({
       date: todayStr(),
       workout: nextWorkout,
@@ -856,6 +1217,8 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
   };
 
   const updateWorkoutType = (value) => {
+    // Switching workout type always resets to the user's saved routine for that split.
+    setVariationIndex(null);
     setForm((prev) => ({
       ...prev,
       workout: value,
@@ -863,6 +1226,65 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
       exercises: (savedRoutine[value] || templates[value]).map((x) => blankExercise(x)),
     }));
   };
+
+  // Apply a specific library variation to the current form.
+  const applyVariation = (workoutType, index) => {
+    const variation = EXERCISE_LIBRARY[workoutType]?.[index];
+    if (!variation) return;
+    setVariationIndex(index);
+    setForm((prev) => ({
+      ...prev,
+      workout: workoutType,
+      title: prev.title && prev.title !== workoutType ? prev.title : `${workoutType} — ${variation.label}`,
+      exercises: exercisesFromVariation(variation),
+    }));
+  };
+
+  // Cycle to the next variation for the current workout type.
+  const shuffleVariation = () => {
+    const list = EXERCISE_LIBRARY[form.workout] || [];
+    if (list.length === 0) return;
+    const nextIdx = variationIndex === null ? 0 : (variationIndex + 1) % list.length;
+    applyVariation(form.workout, nextIdx);
+  };
+
+  // Return to the user's saved routine for the current workout type.
+  const useMyRoutine = () => {
+    setVariationIndex(null);
+    setForm((prev) => ({
+      ...prev,
+      exercises: (savedRoutine[prev.workout] || templates[prev.workout]).map((x) => blankExercise(x)),
+    }));
+  };
+
+  // Look up the most recent logged set for a given exercise name (case-insensitive, exact match).
+  // Supports both the new `sets` array format and the legacy `setsReps` + `weight` shape.
+  const getLastSessionForExercise = (rawName) => {
+    const name = (rawName || "").toLowerCase().trim();
+    if (!name) return null;
+    for (const log of logs) {
+      if (!log.exercises) continue;
+      for (const ex of log.exercises) {
+        if ((ex.name || "").toLowerCase().trim() !== name) continue;
+        if (Array.isArray(ex.sets) && ex.sets.length) {
+          const topSet = ex.sets.find((s) => s.reps || s.weight) || ex.sets[0];
+          if (topSet && (topSet.reps || topSet.weight)) {
+            return { date: log.date, reps: topSet.reps, weight: topSet.weight, shape: "sets" };
+          }
+        }
+        if (ex.setsReps || ex.weight) {
+          return { date: log.date, setsReps: ex.setsReps, weight: ex.weight, shape: "legacy" };
+        }
+      }
+    }
+    return null;
+  };
+
+  // Running session volume (reps × weight summed across every set).
+  const sessionVolume = form.exercises.reduce((total, ex) => {
+    if (!Array.isArray(ex.sets)) return total;
+    return total + ex.sets.reduce((s, set) => s + (parseFloat(set.reps) || 0) * (parseFloat(set.weight) || 0), 0);
+  }, 0);
 
   const updateExercise = (index, field, value) => {
     setForm((prev) => {
@@ -918,6 +1340,7 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
     setRecommendations(null);
     localStorage.removeItem(RECS_KEY);
     setOpen(false);
+    setVariationIndex(null);
     setForm({
       date: todayStr(),
       workout: "Push",
@@ -1235,6 +1658,46 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
                 </div>
               )}
 
+              {/* Routine Variation picker — cycle through curated PPL blocks or use the user's saved routine */}
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-zinc-700 uppercase tracking-wide flex items-center gap-1.5">
+                      <Layers className="h-3 w-3" />
+                      Routine Variation
+                    </p>
+                    <p className="text-xs text-zinc-500 mt-0.5 truncate">
+                      {variationIndex === null
+                        ? "Using your saved routine — pick a variation to mix it up."
+                        : `${EXERCISE_LIBRARY[form.workout]?.[variationIndex]?.label} — ${EXERCISE_LIBRARY[form.workout]?.[variationIndex]?.focus}`}
+                    </p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={shuffleVariation} className="shrink-0 rounded-xl h-8 px-3 text-xs">
+                    <Shuffle className="mr-1 h-3 w-3" />
+                    Shuffle
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={useMyRoutine}
+                    className={`rounded-full border px-3 py-1 text-xs transition ${variationIndex === null ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300 bg-white text-zinc-700 hover:border-zinc-400"}`}
+                  >
+                    My Routine
+                  </button>
+                  {(EXERCISE_LIBRARY[form.workout] || []).map((variation, idx) => (
+                    <button
+                      key={variation.id}
+                      type="button"
+                      onClick={() => applyVariation(form.workout, idx)}
+                      className={`rounded-full border px-3 py-1 text-xs transition ${variationIndex === idx ? "border-indigo-600 bg-indigo-600 text-white" : "border-zinc-300 bg-white text-zinc-700 hover:border-indigo-400"}`}
+                    >
+                      {variation.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-semibold">Exercises</h3>
@@ -1243,7 +1706,16 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
                     Add Exercise
                   </Button>
                 </div>
-                {form.exercises.map((exercise, exIdx) => (
+                {form.exercises.map((exercise, exIdx) => {
+                  const last = getLastSessionForExercise(exercise.name);
+                  const lastLabel = last
+                    ? last.shape === "sets" && (last.reps || last.weight)
+                      ? `Last: ${last.reps || "?"} × ${last.weight || "?"}`
+                      : last.shape === "legacy" && (last.setsReps || last.weight)
+                        ? `Last: ${last.setsReps || "?"} @ ${last.weight || "?"}`
+                        : null
+                    : null;
+                  return (
                   <Card key={exIdx} className="rounded-2xl border-zinc-200 shadow-sm">
                     <CardContent className="p-3 space-y-3">
                       {/* Exercise name + delete */}
@@ -1258,6 +1730,29 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
+
+                      {/* Last session hint — appears whenever history has a match for this exercise name */}
+                      {lastLabel && (
+                        <div className="flex items-center gap-2 text-xs text-zinc-500 bg-indigo-50 border border-indigo-100 rounded-lg px-2 py-1">
+                          <TrendingUp className="h-3 w-3 text-indigo-500 shrink-0" />
+                          <span className="truncate">
+                            {lastLabel}
+                            <span className="ml-1 text-zinc-400">({last.date})</span>
+                          </span>
+                          {last.shape === "sets" && last.reps && last.weight && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                updateSet(exIdx, 0, "reps", String(last.reps));
+                                updateSet(exIdx, 0, "weight", String(last.weight));
+                              }}
+                              className="ml-auto shrink-0 text-indigo-600 hover:text-indigo-800 font-medium"
+                            >
+                              Use last
+                            </button>
+                          )}
+                        </div>
+                      )}
 
                       {/* Per-set rows */}
                       <div className="space-y-2">
@@ -1301,7 +1796,16 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
                       </div>
                     </CardContent>
                   </Card>
-                ))}
+                  );
+                })}
+
+                {/* Live session volume — only shows once any reps × weight have been entered */}
+                {sessionVolume > 0 && (
+                  <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-3 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Session Volume</span>
+                    <span className="text-sm font-bold text-indigo-900">{sessionVolume.toLocaleString()} kg·reps</span>
+                  </div>
+                )}
               </div>
 
               <div>
