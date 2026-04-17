@@ -506,6 +506,15 @@ const QUICK_PROMPTS = [
   "Add a shoulder variation to my next Push day",
 ];
 
+const SESSION_FEEL_OPTIONS = [
+  { value: "coach-decides", label: "Coach decides" },
+  { value: "heavy-compounds", label: "Heavy compounds" },
+  { value: "pump-hypertrophy", label: "Pump / hypertrophy" },
+  { value: "quick-efficient", label: "Quick and efficient" },
+  { value: "machine-dumbbell", label: "Machine / dumbbell day" },
+  { value: "lower-back-safe", label: "Lower-back-safe" },
+];
+
 function loadFromStorage(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
@@ -525,6 +534,68 @@ function blankSet() {
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function formatExerciseSummary(ex) {
+  if (!ex) return "";
+  if (Array.isArray(ex.sets) && ex.sets.length > 0) {
+    const filledSets = ex.sets.filter((set) => set.reps || set.weight);
+    const source = filledSets.length > 0 ? filledSets : ex.sets;
+    const setsText = source
+      .map((set) => `${set.reps || "?"} reps @ ${set.weight || "?"} kg`)
+      .join(", ");
+    return `${ex.name}: ${setsText}`;
+  }
+  if (ex.setsReps || ex.weight) {
+    return `${ex.name}: ${ex.setsReps || "?"} @ ${ex.weight || "?"}`;
+  }
+  return ex.name || "";
+}
+
+function summarizeWorkoutLog(log, limit = 4) {
+  if (!log) return "No previous session logged yet.";
+  const exerciseSummary = (log.exercises || [])
+    .slice(0, limit)
+    .map((ex) => formatExerciseSummary(ex))
+    .filter(Boolean)
+    .join(" | ");
+
+  return `${log.date} - ${log.title || log.workout}${exerciseSummary ? ` | ${exerciseSummary}` : ""}`;
+}
+
+function formatWorkoutLogForPrompt(log) {
+  if (!log) return "None";
+  const exercises = (log.exercises || [])
+    .map((ex) => `- ${formatExerciseSummary(ex)}${ex.notes ? ` | ${ex.notes}` : ""}`)
+    .join("\n");
+
+  return `Date: ${log.date}
+Type: ${log.workout}
+Title: ${log.title || log.workout}
+Energy: ${log.energy || "N/A"}
+Pain: ${log.pain || "None"}
+Notes: ${log.notes || "None"}
+Exercises:
+${exercises || "- None logged"}`;
+}
+
+function buildExercisesFromAiPlan(exercises = []) {
+  return exercises
+    .filter((exercise) => exercise?.name?.trim())
+    .map((exercise) => {
+      const setCount = Math.max(1, Math.min(parseInt(exercise.sets, 10) || 1, 8));
+      const notes = [
+        exercise.reps ? `Target: ${exercise.reps} reps` : "",
+        exercise.weight_hint ? `Load hint: ${exercise.weight_hint}` : "",
+        exercise.notes || "",
+      ].filter(Boolean).join(" | ");
+
+      return {
+        name: exercise.name.trim(),
+        sets: Array.from({ length: setCount }, () => blankSet()),
+        notes,
+      };
+    });
 }
 
 // ── Workout metrics computation ─────────────────────────────────────────────
@@ -718,6 +789,89 @@ Rules: Keep strings concise (1-2 sentences). plateau_alerts and strength_gains m
 }
 
 // ── Per-session insight ─────────────────────────────────────────────────────
+async function fetchAddWorkoutPlan({
+  workoutType,
+  feel,
+  notes,
+  lastWorkout,
+  recentSameTypeLogs,
+  savedRoutine,
+  routineCustomizations,
+}) {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (!apiKey) throw new Error("VITE_GEMINI_API_KEY is not set. Add it to your .env file.");
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.0-flash",
+    systemInstruction: "You are a strength coach building one workout session at a time. Use the athlete's recent history, avoid repetitive exercise selection when possible, and protect the lower back. Keep the plan practical for a normal gym session.",
+  });
+
+  const recentLogsText = recentSameTypeLogs.length > 0
+    ? recentSameTypeLogs.map((log, index) => `Session ${index + 1}\n${formatWorkoutLogForPrompt(log)}`).join("\n\n")
+    : "None";
+  const routineList = (savedRoutine[workoutType] || []).join(", ") || "None";
+  const customizationList = routineCustomizations.length > 0
+    ? routineCustomizations.map((item) => `${item.exerciseName}${item.prescription ? ` (${item.prescription})` : ""}${item.notes ? ` - ${item.notes}` : ""}`).join(" | ")
+    : "None";
+  const selectedFeel = SESSION_FEEL_OPTIONS.find((option) => option.value === feel)?.label || "Coach decides";
+
+  const prompt = `<request>
+Workout type: ${workoutType}
+Desired feel: ${selectedFeel}
+Athlete input: ${notes || "No extra notes"}
+</request>
+
+<last_same_workout>
+${formatWorkoutLogForPrompt(lastWorkout)}
+</last_same_workout>
+
+<recent_same_workouts>
+${recentLogsText}
+</recent_same_workouts>
+
+<saved_routine>
+${routineList}
+</saved_routine>
+
+<saved_coach_additions>
+${customizationList}
+</saved_coach_additions>
+
+Return ONLY valid JSON in this exact shape:
+{
+  "summary": "One sentence on what the athlete did last time for this workout type",
+  "session_title": "Short title for today's session",
+  "focus": "One sentence on today's objective",
+  "why_this_plan": "One sentence on why this plan matches the request",
+  "alternatives": [
+    { "replace": "exercise from last session", "with": "today's alternative", "why": "brief reason" }
+  ],
+  "exercises": [
+    {
+      "name": "exercise name",
+      "sets": 3,
+      "reps": "6-8",
+      "weight_hint": "brief loading guidance using history when possible",
+      "notes": "brief coaching note"
+    }
+  ],
+  "finisher": "Optional finisher or empty string"
+}
+
+Rules:
+- Use 5 to 8 exercises.
+- Reference actual last-session exercises in summary and alternatives when possible.
+- Keep at least 2 exercises different from the last same-type session unless the athlete clearly wants to repeat it.
+- Lower-back safety matters for every workout type.
+- Put set targets in the JSON and keep all strings short.`;
+
+  const result = await model.generateContent(prompt);
+  const text = result.response.text().trim();
+  const clean = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  return JSON.parse(clean);
+}
+
 async function fetchSessionInsight(log) {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
   if (!apiKey) throw new Error("VITE_GEMINI_API_KEY is not set.");
@@ -813,6 +967,10 @@ export default function WorkoutMemoryDashboard() {
   const [routineSaveMsg, setRoutineSaveMsg] = useState(""); // { messageId, workoutType, exerciseName, prescription, notes }
   // null = use the user's saved routine; otherwise index into EXERCISE_LIBRARY[form.workout]
   const [variationIndex, setVariationIndex] = useState(null);
+  const [plannerInput, setPlannerInput] = useState({ feel: "coach-decides", notes: "" });
+  const [generatedWorkoutPlan, setGeneratedWorkoutPlan] = useState(null);
+  const [planningWorkout, setPlanningWorkout] = useState(false);
+  const [planningError, setPlanningError] = useState("");
 
   // Load all data from Supabase on mount
   useEffect(() => {
@@ -955,6 +1113,18 @@ export default function WorkoutMemoryDashboard() {
   }, [logs]);
 
   const liveMetrics = useMemo(() => computeWorkoutMetrics(logs), [logs]);
+  const lastWorkoutOfType = useMemo(
+    () => logs.find((log) => log.workout === form.workout) || null,
+    [logs, form.workout]
+  );
+  const recentSameTypeLogs = useMemo(
+    () => logs.filter((log) => log.workout === form.workout).slice(0, 3),
+    [logs, form.workout]
+  );
+  const workoutCustomizations = useMemo(
+    () => routineCustomizations.filter((item) => item.workoutType === form.workout),
+    [routineCustomizations, form.workout]
+  );
 
   // Auto-scroll chat to bottom on new messages
   React.useEffect(() => {
@@ -1201,8 +1371,21 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
     }));
   };
 
+  const resetAddWorkoutPlanner = () => {
+    setPlannerInput({ feel: "coach-decides", notes: "" });
+    setGeneratedWorkoutPlan(null);
+    setPlanningWorkout(false);
+    setPlanningError("");
+  };
+
+  const handleAddWorkoutDialogChange = (nextOpen) => {
+    setOpen(nextOpen);
+    if (!nextOpen) resetAddWorkoutPlanner();
+  };
+
   const startSuggestedSession = () => {
     setVariationIndex(null);
+    resetAddWorkoutPlanner();
     setForm({
       date: todayStr(),
       workout: nextWorkout,
@@ -1219,6 +1402,8 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
   const updateWorkoutType = (value) => {
     // Switching workout type always resets to the user's saved routine for that split.
     setVariationIndex(null);
+    setGeneratedWorkoutPlan(null);
+    setPlanningError("");
     setForm((prev) => ({
       ...prev,
       workout: value,
@@ -1251,10 +1436,46 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
   // Return to the user's saved routine for the current workout type.
   const useMyRoutine = () => {
     setVariationIndex(null);
+    setGeneratedWorkoutPlan(null);
+    setPlanningError("");
     setForm((prev) => ({
       ...prev,
       exercises: (savedRoutine[prev.workout] || templates[prev.workout]).map((x) => blankExercise(x)),
     }));
+  };
+
+  const applyGeneratedWorkoutPlan = (plan) => {
+    if (!plan?.exercises?.length) return;
+    setVariationIndex(null);
+    setForm((prev) => ({
+      ...prev,
+      title: plan.session_title || prev.title || prev.workout,
+      notes: [plan.focus, plan.why_this_plan, plan.finisher ? `Finisher: ${plan.finisher}` : ""]
+        .filter(Boolean)
+        .join("\n"),
+      exercises: buildExercisesFromAiPlan(plan.exercises),
+    }));
+  };
+
+  const handleGenerateAddWorkoutPlan = async () => {
+    setPlanningWorkout(true);
+    setPlanningError("");
+    try {
+      const plan = await fetchAddWorkoutPlan({
+        workoutType: form.workout,
+        feel: plannerInput.feel,
+        notes: plannerInput.notes.trim(),
+        lastWorkout: lastWorkoutOfType,
+        recentSameTypeLogs,
+        savedRoutine,
+        routineCustomizations: workoutCustomizations,
+      });
+      setGeneratedWorkoutPlan(plan);
+    } catch (err) {
+      setPlanningError(err.message || "Failed to build workout.");
+    } finally {
+      setPlanningWorkout(false);
+    }
   };
 
   // Look up the most recent logged set for a given exercise name (case-insensitive, exact match).
@@ -1341,6 +1562,7 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
     localStorage.removeItem(RECS_KEY);
     setOpen(false);
     setVariationIndex(null);
+    resetAddWorkoutPlanner();
     setForm({
       date: todayStr(),
       workout: "Push",
@@ -1588,7 +1810,7 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
               PPL split tracker — log sessions, review history, and get AI coaching insights.
             </p>
           </div>
-          <Dialog open={open} onOpenChange={setOpen}>
+          <Dialog open={open} onOpenChange={handleAddWorkoutDialogChange}>
             <DialogTrigger asChild>
               <Button className="w-full rounded-2xl px-5 sm:w-auto">
                 <Plus className="mr-2 h-4 w-4" />
@@ -1637,13 +1859,155 @@ Be specific: give real exercise names with sets/reps when suggesting. Keep repli
                 </div>
               </div>
 
+              <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 space-y-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+                      Smart Workout Builder
+                    </p>
+                    <p className="mt-1 text-sm text-indigo-800">
+                      Pick the kind of session you want today. Gemini will look at your recent {form.workout} work and build a different version for you.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={useMyRoutine}
+                    className="shrink-0 rounded-xl border-indigo-300 bg-white text-indigo-700 hover:bg-indigo-100"
+                  >
+                    Use My Routine
+                  </Button>
+                </div>
+
+                <div className="rounded-2xl border border-indigo-100 bg-white p-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Last {form.workout} session</div>
+                  <p className="mt-1 text-sm text-zinc-700">{summarizeWorkoutLog(lastWorkoutOfType)}</p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-[220px_1fr]">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-zinc-800">What do you feel like doing?</label>
+                    <Select
+                      value={plannerInput.feel}
+                      onValueChange={(value) => setPlannerInput((prev) => ({ ...prev, feel: value }))}
+                    >
+                      <SelectTrigger className="bg-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SESSION_FEEL_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-zinc-800">Anything else for today?</label>
+                    <Textarea
+                      value={plannerInput.notes}
+                      onChange={(e) => setPlannerInput((prev) => ({ ...prev, notes: e.target.value }))}
+                      placeholder="Examples: keep bench but change the accessories, short session today, more chest pump, shoulder feels tight, avoid spinal loading..."
+                      className="min-h-[92px] bg-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Button
+                    type="button"
+                    onClick={handleGenerateAddWorkoutPlan}
+                    disabled={planningWorkout}
+                    className="rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white"
+                  >
+                    {planningWorkout ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Building Workout...</>
+                    ) : (
+                      <><Sparkles className="mr-2 h-4 w-4" />Build From My Input</>
+                    )}
+                  </Button>
+                  {planningError && <span className="text-sm text-red-600">{planningError}</span>}
+                </div>
+
+                {generatedWorkoutPlan && (
+                  <div className="rounded-2xl border border-indigo-200 bg-white p-4 space-y-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="text-sm font-semibold text-zinc-900">
+                          {generatedWorkoutPlan.session_title || `${form.workout} session`}
+                        </div>
+                        {generatedWorkoutPlan.focus && (
+                          <p className="mt-1 text-sm text-indigo-700">{generatedWorkoutPlan.focus}</p>
+                        )}
+                        {generatedWorkoutPlan.summary && (
+                          <p className="mt-1 text-xs text-zinc-500">Last time: {generatedWorkoutPlan.summary}</p>
+                        )}
+                        {generatedWorkoutPlan.why_this_plan && (
+                          <p className="mt-2 text-sm text-zinc-600">{generatedWorkoutPlan.why_this_plan}</p>
+                        )}
+                      </div>
+                      <Button
+                        type="button"
+                        onClick={() => applyGeneratedWorkoutPlan(generatedWorkoutPlan)}
+                        className="shrink-0 rounded-xl bg-zinc-900 hover:bg-zinc-700 text-white"
+                      >
+                        Replace Form With This Plan
+                      </Button>
+                    </div>
+
+                    {generatedWorkoutPlan.alternatives?.length > 0 && (
+                      <div>
+                        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-indigo-700">
+                          Alternate options from last time
+                        </div>
+                        <div className="space-y-2">
+                          {generatedWorkoutPlan.alternatives.map((item, index) => (
+                            <div key={`${item.replace}-${item.with}-${index}`} className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2">
+                              <div className="text-sm text-zinc-800">
+                                <span className="font-medium">{item.replace}</span>{" -> "}<span className="font-medium text-indigo-700">{item.with}</span>
+                              </div>
+                              {item.why && <div className="mt-1 text-xs text-zinc-500">{item.why}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-indigo-700">
+                        Generated session
+                      </div>
+                      <div className="space-y-2">
+                        {generatedWorkoutPlan.exercises?.map((exercise, index) => (
+                          <div key={`${exercise.name}-${index}`} className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+                            <div className="text-sm font-medium text-zinc-800">{exercise.name}</div>
+                            <div className="mt-1 text-xs text-zinc-500">
+                              {exercise.sets || 1} sets{exercise.reps ? ` x ${exercise.reps}` : ""}
+                              {exercise.weight_hint ? ` | ${exercise.weight_hint}` : ""}
+                            </div>
+                            {exercise.notes && <div className="mt-1 text-xs text-zinc-500">{exercise.notes}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {generatedWorkoutPlan.finisher && (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                        Finisher: {generatedWorkoutPlan.finisher}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Saved coach suggestions for this workout type */}
-              {routineCustomizations.filter((c) => c.workoutType === form.workout).length > 0 && (
+              {workoutCustomizations.length > 0 && (
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 space-y-2">
                   <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
                     Saved Coach Suggestions for {form.workout}
                   </p>
-                  {routineCustomizations.filter((c) => c.workoutType === form.workout).map((c) => (
+                  {workoutCustomizations.map((c) => (
                     <div key={c.id} className="flex items-center justify-between gap-3 rounded-xl bg-white border border-emerald-200 px-3 py-2">
                       <div className="flex-1 min-w-0">
                         <span className="text-sm font-medium text-zinc-800">{c.exerciseName}</span>
